@@ -17,7 +17,7 @@ AI 코딩 토큰 사용량으로 식물을 키우는 macOS 메뉴바 앱.
 ### Homebrew (권장)
 
 ```bash
-brew install --cask seoyeon1123/tap/tokenplant
+brew install --cask YOUR-GITHUB-ID/tap/tokenplant
 ```
 
 메뉴바 오른쪽에 화분이 뜨면 끝이다. 톱니 메뉴에서 **로그인 시 자동 실행**을 켜두면
@@ -31,7 +31,7 @@ brew upgrade --cask tokenplant
 
 ### 직접 다운로드
 
-[Releases](https://github.com/seoyeon1123/tokenplant/releases/latest) 에서
+[Releases](https://github.com/YOUR-GITHUB-ID/tokenplant/releases/latest) 에서
 `TokenPlant.zip` 을 받아 압축을 풀고 `TokenPlant.app` 을 `/Applications` 로 끌어다 놓는다.
 
 이 앱은 Apple 공증(notarization)을 받지 않았다. 그래서 첫 실행에 Gatekeeper 경고가 뜬다.
@@ -49,7 +49,7 @@ Homebrew 로 깔면 이 과정이 자동으로 처리돼서 경고를 볼 일이
 ### 소스에서 빌드
 
 ```bash
-git clone https://github.com/seoyeon1123/tokenplant.git
+git clone https://github.com/YOUR-GITHUB-ID/tokenplant.git
 cd tokenplant
 ./build-app.sh --install
 ```
@@ -97,6 +97,9 @@ Apple Silicon·Intel 둘 다 담은 universal 바이너리로 만들고, 실패�
 
 지갑은 **설치 후 계속 누적**되고 자정에 초기화되지 않는다. 다만 시간이 아니라
 토큰을 써야 늘어난다. 값은 "며칠치"로 매겨져 있고, 하루치가 얼마인지는 앱이 직접 잰다.
+
+설치하면 **씨앗부터** 시작한다. 설치 전에 쓴 토큰은 소급하지 않는다 —
+과거 로그는 "이 사람 하루가 얼마인가"를 재는 데만 쓰고, 성장과 지갑에는 안 들어간다.
 
 숫자를 왜 그렇게 정했는지는 [DESIGN.md](DESIGN.md) 에 있다.
 
@@ -161,13 +164,7 @@ ad-hoc 서명은 빌드마다 신원이 바뀐다. 그래서 다시 빌드하면
 
 - [DESIGN.md](DESIGN.md) — 숫자와 규칙을 왜 그렇게 정했는지
 - [SPEC.md](SPEC.md) — 명세
-- [FORK.md](FORK.md) — PokeTokenBar 에서 무엇을 바꿨는지
-- [RELEASE.md](RELEASE.md) — 릴리스 절차
 
 ## 라이선스
 
-MIT. [chattymin/PokeTokenBar](https://github.com/chattymin/PokeTokenBar) 의 구조를
-따르되 포켓몬 레이어를 식물·정원으로 교체했다.
-원저작권: Copyright (c) 2026 chattymin (PokeTokenBar). 자세한 내용은 [LICENSE](LICENSE).
-
-스프라이트·정원 배경·장식은 전부 이 저장소에서 새로 그린 것이다.
+MIT. 자세한 내용은 [LICENSE](LICENSE).

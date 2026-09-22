@@ -291,7 +291,7 @@ struct ShopView: View {
             // 스트릭·거름 보너스를 곱해서, 같은 물 한 개가 날마다 다른 양으로 들어간다.
             // (가방 문구는 보너스를 먹인 뒤 값을 찍어서 둘이 서로 달랐다.)
             // 여기 적는 건 보너스 전 기본량이고, 하루 상한도 같이 알려준다.
-            return "기본 +\(Water.mL(dailyRaw: store.dailyRate).formatted()) mL"
+            return "기본 +\(store.waterML.formatted()) mL"
                  + " · 하루 \(PlantBalance.dailyWaterUses)번까지 (보너스만큼 더 들어가요)"
 
         case .fertilizer:
@@ -338,7 +338,7 @@ struct ShopView: View {
     /// 사고 나서 알게 하면 안 된다.
     private func vsWater(_ item: ShopItem, _ back: Int) -> String {
         let waterCount = item.priceDays / ShopItem.water.priceDays
-        let alt = Int(waterCount * Double(Water.mL(dailyRaw: store.dailyRate)))
+        let alt = Int(waterCount * Double(store.waterML))
         let margin = back - alt
         return margin >= 0 ? "(물보다 +\(margin.formatted()))"
                            : "(물보다 −\(abs(margin).formatted()) 손해)"

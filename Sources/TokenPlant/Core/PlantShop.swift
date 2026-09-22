@@ -171,8 +171,14 @@ enum ShopItem: String, Codable, Sendable, CaseIterable {
 enum Water {
     /// 그 사람 하루 성장의 1/5. 값도 하루치의 1/5 이라 **1:1 등가 교환**이고,
     /// 하루에 몇 개까지 살 수 있는지는 `PlantBalance.dailyWaterUses` 가 정한다.
-    static func mL(dailyRaw: Int) -> Int {
-        max(1, dailyRaw / PlantBalance.rawPerML / 5)
+    ///
+    /// `rawPerML` 을 받는 이유: 상수로 환산하면 **1:1 이 깨진다.**
+    /// 값은 그 사람 하루 토큰의 1/5 인데 mL 은 평균 환산비율로 만드니까,
+    /// 캐시읽기가 많아 환산비율이 나쁜 사람은 자기 하루 성장의 1/5 보다 **더 많이** 받는다.
+    /// 실측으로는 물 배율이 설계 예산 ×1.40 대신 ×1.57 로 나왔다.
+    /// 목표(`seedCycle`)가 이미 실측 비율을 쓰므로 여기도 맞춘다.
+    static func mL(dailyRaw: Int, rawPerML: Int = PlantBalance.rawPerML) -> Int {
+        max(1, dailyRaw / max(1, rawPerML) / 5)
     }
 
     /// 기준 하루치로 환산한 값 — 표·문서·테스트의 기준점.

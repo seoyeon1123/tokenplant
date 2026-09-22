@@ -228,8 +228,16 @@ final class GardenBloomTests: XCTestCase {
     /// (그렇게 짰다가 0.27 이 나와 테스트가 틀렸었다). **꽃을 얹기 전후의 잎 수**를
     /// 견주는 게 "삼켰다"를 직접 재는 방법이다.
     func testBloomsDoNotSwallowTheWholeCanopy() {
+        // 한 줄 체인(`flatMap → filter(== "G" || …) → count`)으로 쓰면 타입 체커가
+        // 시간 초과로 컴파일을 포기한다. 문자 리터럴이 체인 안에서 후보를 폭발시킨다.
+        // 집합을 **미리 타입을 박아** 두고 평범한 루프로 센다.
+        let leafChars: Set<Character> = ["G", "L", "d"]
         func leafCount(_ grid: [[Character]]) -> Int {
-            grid.flatMap { $0 }.filter { $0 == "G" || $0 == "L" || $0 == "d" }.count
+            var n = 0
+            for row in grid {
+                for ch in row where leafChars.contains(ch) { n += 1 }
+            }
+            return n
         }
         for shape in PlantShape.allCases {
             let plain = PlantSpriteBuilder.decorate(GardenSprites.shapes[shape] ?? [],

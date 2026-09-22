@@ -25,15 +25,15 @@ final class PlantSpritesTests: XCTestCase {
 
     func testDecoratedGridIsSquare() {
         for i in 0..<PotSprites.stages.count {
-            let g = PotSprites.grid(stageIndex: i)
+            let g = PotSprites.grid(stageIndex: i, motif: .daisy)
             XCTAssertEqual(g.count, PotSprites.size, "단계 \(i) 높이")
             for row in g { XCTAssertEqual(row.count, PotSprites.size, "단계 \(i) 너비") }
         }
     }
 
     func testStageIndexIsClampedNotCrashing() {
-        XCTAssertEqual(PotSprites.grid(stageIndex: -5).count, PotSprites.size)
-        XCTAssertEqual(PotSprites.grid(stageIndex: 999).count, PotSprites.size)
+        XCTAssertEqual(PotSprites.grid(stageIndex: -5, motif: .daisy).count, PotSprites.size)
+        XCTAssertEqual(PotSprites.grid(stageIndex: 999, motif: .daisy).count, PotSprites.size)
     }
 
     func testGardenShapesAre16x16AndCoverEveryCase() {
@@ -53,7 +53,7 @@ final class PlantSpritesTests: XCTestCase {
         let sample = PlantSpecies.catalog[0]
 
         for i in 0..<PotSprites.stages.count {
-            for row in PotSprites.grid(stageIndex: i) {
+            for row in PotSprites.grid(stageIndex: i, motif: .daisy) {
                 for ch in row {
                     XCTAssertTrue(known.contains(ch), "단계 \(i) 에 알 수 없는 문자 '\(ch)'")
                     if ch != "." {
@@ -64,7 +64,7 @@ final class PlantSpritesTests: XCTestCase {
             }
         }
         for shape in PlantShape.allCases {
-            for row in GardenSprites.grid(shape) {
+            for row in GardenSprites.grid(shape, motif: .daisy) {
                 for ch in row { XCTAssertTrue(known.contains(ch), "\(shape.rawValue) 에 '\(ch)'") }
             }
         }
@@ -97,7 +97,7 @@ final class PlantSpritesTests: XCTestCase {
                                "Lv.\(stage.level) 실루엣에 아웃라인이 손으로 들어 있다 — decorate() 가 중복 처리한다")
             }
         }
-        let decorated = PotSprites.grid(stageIndex: 9)
+        let decorated = PotSprites.grid(stageIndex: 9, motif: .daisy)
         let outlines = decorated.reduce(0) { acc, row in acc + row.filter { ch in ch == "K" }.count }
         XCTAssertGreaterThan(outlines, 40, "아웃라인이 거의 안 생겼다")
     }
@@ -169,8 +169,14 @@ final class IconSpritesTests: XCTestCase {
             XCTAssertNotNil(DecorIcons.grid(item.rawValue),
                             "\(item.rawValue) 장식 아트가 없다 — 정원에 빈칸이 놓인다")
         }
-        XCTAssertEqual(DecorIcons.art.count, ShopItem.allCases.filter(\.isDecoration).count,
-                       "쓰이지 않는 장식 아트가 남아 있다")
+        // 뽑기로만 나오는 아홉 개는 상점 품목이 아니다 — 그것까지 세야 한다.
+        for key in DecorIcons.gachaKeys {
+            XCTAssertNotNil(DecorIcons.grid(key), "\(key) 뽑기 장식 아트가 없다")
+        }
+        let owned = Set(ShopItem.allCases.filter(\.isDecoration).map(\.rawValue))
+            .union(DecorIcons.gachaKeys)
+        XCTAssertEqual(DecorIcons.art.count, owned.count,
+                       "어디서도 안 나오는 장식 아트가 남아 있다")
         // 삭제된 품목의 아트가 남아 있으면 상점에 없는 그림을 계속 들고 다니게 된다.
         XCTAssertEqual(ItemIcons.art.count,
                        ShopItem.allCases.filter { !$0.isDecoration }.count,

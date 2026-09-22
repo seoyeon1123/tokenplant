@@ -297,6 +297,220 @@ def optional_on_nonoptional_errors(root):
     return bad
 
 
+def _strip_comments(line):
+    """줄 주석을 뗀다. 문자열 안의 `//` 는 남긴다(따옴표 개수로 대충 판단)."""
+    out, i, in_str = [], 0, False
+    while i < len(line):
+        c = line[i]
+        if c == '"' and (i == 0 or line[i - 1] != "\\"):
+            in_str = not in_str
+        if not in_str and c == "/" and i + 1 < len(line) and line[i + 1] == "/":
+            break
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def _split_top_level(text):
+    """괄호·대괄호 깊이를 보며 최상위 쉼표로 자른다."""
+    parts, depth, cur, in_str = [], 0, [], False
+    for i, c in enumerate(text):
+        if c == '"' and (i == 0 or text[i - 1] != "\\"):
+            in_str = not in_str
+        if not in_str:
+            if c in "([{":
+                depth += 1
+            elif c in ")]}":
+                depth -= 1
+            elif c == "," and depth == 0:
+                parts.append("".join(cur)); cur = []; continue
+        cur.append(c)
+    if "".join(cur).strip():
+        parts.append("".join(cur))
+    return [p.strip() for p in parts]
+
+
+PARAM_LABEL = re.compile(r"^(?:(_|[A-Za-z_]\w*)\s+)?([A-Za-z_]\w*)\s*:")
+ARG_LABEL = re.compile(r"^([A-Za-z_]\w*)\s*:(?!:)")
+FUNC_SIG = re.compile(r"^\s*(?:@\w+(?:\([^)]*\))?\s+)*"
+                      r"(?:public\s+|internal\s+|private(?:\(set\))?\s+|fileprivate\s+|"
+                      r"static\s+|class\s+|final\s+|@discardableResult\s+|"
+                      r"nonisolated(?:\(unsafe\))?\s+|mutating\s+)*"
+                      r"func\s+([A-Za-z_]\w*)\s*(?:<[^>]*>)?\s*\(")
+
+
+def _balanced(text, open_idx):
+    """`text[open_idx]` 의 여는 괄호에 맞는 닫는 괄호 위치. 못 찾으면 None."""
+    depth, i, in_str = 0, open_idx, False
+    while i < len(text):
+        c = text[i]
+        if c == '"' and (i == 0 or text[i - 1] != "\\"):
+            in_str = not in_str
+        if not in_str:
+            if c == "(":
+                depth += 1
+            elif c == ")":
+                depth -= 1
+                if depth == 0:
+                    return i
+        i += 1
+    return None
+
+
+def collect_signatures(root):
+    """감시 타입의 `func` 시그니처 → {(타입, 함수명): [ [(레이블, 기본값있음)], ... ]}"""
+    sigs = defaultdict(list)
+    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+        blocks, lines = type_blocks(str(f))
+        code = [_strip_comments(l) for l in lines]
+        for name, lo, hi in blocks:
+            if name not in WATCHED:
+                continue
+            for i in range(lo, min(hi + 1, len(code))):
+                m = FUNC_SIG.match(code[i])
+                if not m:
+                    continue
+                # 시그니처가 여러 줄에 걸칠 수 있다 — 괄호가 닫힐 때까지 이어 붙인다.
+                joined = "\n".join(code[i:min(i + 12, len(code))])
+                start = joined.index("(", m.end() - 1) if "(" in joined[m.end() - 1:] else m.end() - 1
+                close = _balanced(joined, m.end() - 1)
+                if close is None:
+                    continue
+                params = _split_top_level(joined[m.end():close])
+                labels = []
+                for p in params:
+                    pm = PARAM_LABEL.match(p)
+                    if not pm:
+                        continue
+                    ext = pm.group(1) if pm.group(1) else pm.group(2)
+                    labels.append(("" if ext == "_" else ext, "=" in p.split(":", 1)[-1]))
+                sigs[(name, m.group(1))].append(labels)
+    return sigs
+
+
+def argument_label_errors(root, sigs):
+    """호출부의 인자 레이블이 어느 오버로드와도 안 맞는 곳을 찾는다.
+
+    **실제로 맥에서 `swift test` 가 이걸로 터졌다.** `PotSprites.grid` 에 `motif:` 가
+    추가됐는데 테스트 5곳이 옛 호출 그대로였다. 이 검사기는 "멤버가 있는가"만 봤고
+    이름은 멀쩡했으므로 통과했다 — 컴파일러가 있는 데서 빌드할 때까지 아무도 몰랐다.
+
+    기본값이 있는 인자는 빠져도 되고, 없는 인자는 반드시 있어야 한다.
+    """
+    call = re.compile(r"\b(" + "|".join(sorted(WATCHED)) + r")\.([A-Za-z_]\w*)\s*\(")
+    bad = []
+    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+        lines = f.read_text(encoding="utf8").split("\n")
+        text = "\n".join(_strip_comments(l) for l in lines)
+        for m in call.finditer(text):
+            typ, fname = m.group(1), m.group(2)
+            overloads = sigs.get((typ, fname))
+            if not overloads:
+                continue                      # enum case·프로퍼티·모르는 것은 건드리지 않는다
+            close = _balanced(text, m.end() - 1)
+            if close is None:
+                continue
+            args = _split_top_level(text[m.end():close])
+            used = []
+            for a in args:
+                am = ARG_LABEL.match(a)
+                used.append(am.group(1) if am else "")
+            ok = False
+            for labels in overloads:
+                required = [l for l, has_def in labels if not has_def]
+                # 호출 레이블이 선언 레이블의 부분수열이고, 기본값 없는 건 다 있어야 한다.
+                it = iter(labels)
+                if all(any(l == u for l, _ in it) for u in used) and \
+                   all(r in used for r in required) and len(used) <= len(labels):
+                    ok = True
+                    break
+            if not ok:
+                n = text.count("\n", 0, m.start()) + 1
+                want = " / ".join("(" + ", ".join(l or "_" for l, _ in o) + ")"
+                                  for o in overloads)
+                bad.append((str(f.relative_to(root)), n, f"{typ}.{fname}",
+                            "(" + ", ".join(u or "_" for u in used) + ")", want,
+                            lines[n - 1].strip()))
+    return bad
+
+
+# 루트 변수와 `?.` 사이에 경로가 낄 수 있다 — `s.pot?.cycleWater` 가 바로 그 모양이다.
+EXCLUSIVITY_LHS = re.compile(
+    r"^\s*([a-z]\w*)((?:\.[A-Za-z_]\w*|[?!])+)\s*(?:\+|-|\*|/)?=(?!=)\s*(.+)$")
+
+
+def exclusivity_errors(root):
+    """`x?.y = f(x)` 처럼 우변에서 같은 루트를 읽는 옵셔널 체이닝 대입을 찾는다.
+
+    **맥에서 `swift test` 가 이걸로 터졌다.**
+
+        s.pot?.cycleWater = PlantEngine.seedCycle(s)
+        // error: overlapping accesses to 's.pot',
+        //        but modification requires exclusive access
+
+    `s.pot?.x = ...` 는 `s.pot` 을 읽고-고치고-되쓴다. 그 **수정 접근이 우변을 계산하는
+    내내 열려 있어서**, 우변이 같은 `s` 를 읽으면 접근이 겹친다.
+    `save.dailyRaw = f(save.dailyRaw)` 처럼 직접 저장 프로퍼티에 대입하는 건 괜찮다 —
+    우변을 다 계산한 뒤에 쓰기 접근이 시작되기 때문이다. 그래서 `?.`/`!.` 만 본다.
+
+    고치는 법은 언제나 같다. 우변을 **지역 변수에 먼저 담는다.**
+    tree-sitter 는 이 줄을 아무 문제 없이 파싱하므로 여기서 안 잡으면 맥에서만 안다.
+    """
+    bad = []
+    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+        lines = f.read_text(encoding="utf8").split("\n")
+        for n, line in enumerate(lines, 1):
+            m = EXCLUSIVITY_LHS.match(_strip_comments(line))
+            if not m:
+                continue
+            root_var, path, rhs = m.group(1), m.group(2), m.group(3)
+            # 옵셔널 체이닝(또는 강제 언랩)을 거치는 대입만 본다.
+            if "?." not in path and "!." not in path:
+                continue
+            # 문자열 리터럴 안의 이름은 세지 않는다.
+            rhs_code = re.sub(r'"[^"]*"', '""', rhs)
+            if re.search(rf"\b{re.escape(root_var)}\b", rhs_code):
+                bad.append((str(f.relative_to(root)), n, root_var, line.strip()))
+    return bad
+
+
+# `count`·`joined` 처럼 체인을 **끝내는** 것도 센다 — 빠뜨렸다가 실제로 터진 줄을
+# 2개로 세서 못 잡았다. 연쇄의 길이가 문제지 마지막 항이 무엇인지는 상관없다.
+CHAIN_OPS = re.compile(r"\.(flatMap|compactMap|filter|map|reduce|sorted|"
+                       r"first|allSatisfy|contains|prefix|suffix|drop\w*|"
+                       r"count|joined|enumerated|reversed|split)\b")
+LITERAL_EQ = re.compile(r"[=!]=\s*\"")
+
+
+def slow_typecheck_errors(root):
+    """한 줄에 연쇄 연산 3개 이상 + 문자열 리터럴 비교 2개 이상인 식을 찾는다.
+
+    **맥에서 `swift test` 가 이걸로 터졌다.**
+
+        grid.flatMap { $0 }.filter { $0 == "G" || $0 == "L" || $0 == "d" }.count
+        // error: the compiler is unable to type-check this expression
+        //        in reasonable time
+
+    문법도 타입도 멀쩡하다. 문제는 `"G"` 같은 리터럴이 `Character`/`String`/
+    `StringLiteralConvertible` 후보를 모두 열어 두는데, 그게 제네릭 체인마다 곱해져서
+    탐색 공간이 터지는 것이다. 컴파일러는 "오래 걸린다"며 포기한다.
+
+    고치는 법: 리터럴 집합에 **타입을 박아** 지역 변수로 빼고 체인을 쪼갠다.
+
+        let leafChars: Set<Character> = ["G", "L", "d"]
+
+    기준을 3·2 로 둔 이유는 이 저장소에서 실제로 터진 줄만 정확히 걸리고
+    나머지는 하나도 안 걸리기 때문이다. 더 느슨하게 잡으면 멀쩡한 체인이 쏟아진다.
+    """
+    bad = []
+    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+        for n, line in enumerate(f.read_text(encoding="utf8").split("\n"), 1):
+            code = _strip_comments(line)
+            if len(CHAIN_OPS.findall(code)) >= 3 and len(LITERAL_EQ.findall(code)) >= 2:
+                bad.append((str(f.relative_to(root)), n, line.strip()))
+    return bad
+
+
 def main(root):
     declared = collect_declared(root)
     cases = collect_cases(root)
@@ -339,6 +553,28 @@ def main(root):
         print(f"  {path}:{n}")
         print(f"      {text[:110]}")
     total += len(opt_bad)
+
+    sigs = collect_signatures(root)
+    label_bad = argument_label_errors(root, sigs)
+    for path, n, fn, got, want, text in label_bad:
+        print(f"\n{fn} 호출의 인자 레이블이 선언과 안 맞는다:")
+        print(f"  {path}:{n}  받은 것 {got}  ·  선언 {want}")
+        print(f"      {text[:110]}")
+    total += len(label_bad)
+
+    excl_bad = exclusivity_errors(root)
+    for path, n, var, text in excl_bad:
+        print(f"\n`{var}?.…= ` 의 우변이 같은 `{var}` 를 읽는다 (배타적 접근 위반):")
+        print(f"  {path}:{n}   → 우변을 지역 변수에 먼저 담을 것")
+        print(f"      {text[:110]}")
+    total += len(excl_bad)
+
+    slow_bad = slow_typecheck_errors(root)
+    for path, n, text in slow_bad:
+        print(f"\n타입 체커가 포기할 만한 식 (연쇄 + 리터럴 비교가 겹쳤다):")
+        print(f"  {path}:{n}   → 리터럴 집합에 타입을 박아 지역 변수로 뺄 것")
+        print(f"      {text[:110]}")
+    total += len(slow_bad)
 
     switch_bad = switch_case_errors(root, declared, cases)
     if switch_bad:

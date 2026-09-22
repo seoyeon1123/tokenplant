@@ -37,24 +37,53 @@ final class PlantEngineTests: XCTestCase {
         XCTAssertEqual(s.pot!.water, grown, "같은 스냅샷으로 또 자랐다")
     }
 
-    /// 첫 설치는 **오늘치를 인정한다.** 0 을 보여주면 앱이 고장난 것처럼 보인다.
-    /// 다만 `firstDayCreditCap` 으로 막아 전체 로그 소급(=첫 실행에 물통 가득)은 불가능해야 한다.
-    func testFirstInstallCreditsTodayButCapsIt() {
+    /// 첫 설치는 **아무것도 적립하지 않는다.** 설치 전에 쓴 토큰은 내 것이 아니다.
+    ///
+    /// 예전엔 "이틀치까지" 인정했는데, 그 값이 정확히 5단계 문턱을 넘겨서
+    /// 설치하자마자 「Lv.5 자란 줄기」로 시작하는 사람이 사실상 전부였다.
+    func testFirstInstallCreditsNothing() {
         var s = PlantSave()
         s.pot = PotState(speciesID: "tomato")
         XCTAssertNil(s.claimedTodayByProvider)
 
-        // 캐시읽기 3B = 300,000mL 상당. 상한이 없으면 물통에 이식 한 사이클치가 꽂힌다.
+        // 캐시읽기 3B = 300,000mL 상당. 한 톨도 들어가면 안 된다.
         PlantEngine.ingest(&s, todayByProvider: ["claude": TokenDelta(cacheRead: 3_000_000_000)], today: day1)
 
-        XCTAssertEqual(s.rawWallet, PlantBalance.firstDayRawCap(dailyRaw: PlantBalance.assumedDailyRaw),
-                       "지갑 상한이 안 걸렸다 — 전체 로그가 소급됐을 수 있다")
-        // 성장에도 따로 상한이 걸린다. 한쪽만 막으면 앞뒤가 안 맞는다.
-        let expected = PlantBalance.applied(water: PlantBalance.firstDayCredit(cycle: s.pot!.cycleWater),
-                                            streakDays: 1, fertilizerActive: false)
-        XCTAssertEqual(s.pot!.water, expected, "성장 상한이 안 걸렸다")
+        XCTAssertEqual(s.rawWallet, 0, "설치 전 토큰이 지갑에 소급됐다")
+        XCTAssertEqual(s.pot!.water, 0, "설치 전 토큰으로 자랐다")
+        XCTAssertEqual(s.pot!.stageIndex, 0, "씨앗으로 시작하지 않았다")
+        XCTAssertEqual(s.rawSinceInstall, 0, "설치 전 몫이 누적에 들어갔다")
         XCTAssertTrue(s.installBaselineSet)
         XCTAssertEqual(s.lastDate, day1, "seed 분기가 날짜를 안 적었다")
+    }
+
+    /// 첫날 적립이 사라지면서 `lastWaterDay` 도 빈 채로 시작한다.
+    /// 그 상태를 "며칠째 안 준 것"으로 읽으면 **설치 직후 바싹 마른 씨앗**이 뜬다.
+    func testFreshInstallIsNotThirsty() {
+        var s = PlantSave()
+        s.pot = PotState(speciesID: "tomato")
+        PlantEngine.ingest(&s, todayByProvider: ["claude": TokenDelta(cacheRead: 3_000_000_000)],
+                           today: day1)
+        XCTAssertTrue(s.lastWaterDay.isEmpty, "전제가 깨졌다 — 설치가 물을 줬다")
+        XCTAssertEqual(PlantEngine.thirstLevel(s, today: day1), 0, accuracy: 0.0001,
+                       "설치 직후에 목이 말랐다")
+        // 한참 뒤에 열어도 마찬가지다. 한 번도 안 준 그루는 마른 게 아니라 **막 심은** 것이다.
+        XCTAssertEqual(PlantEngine.thirstLevel(s, today: "2027-01-01"), 0, accuracy: 0.0001,
+                       "한 번도 안 준 씨앗이 바싹 말랐다")
+        XCTAssertFalse(s.pendingEvents.contains(.thirsty), "설치 직후 목마름 알림이 쌓였다")
+    }
+
+    /// 기준선을 잡은 **뒤** 쓴 것은 같은 날이라도 온전히 들어온다.
+    /// 이게 없으면 설치한 날 하루를 통째로 잃는다.
+    func testUsageAfterInstallCreditsInFull() {
+        var s = PlantSave()
+        s.pot = PotState(speciesID: "tomato")
+        PlantEngine.ingest(&s, todayByProvider: ["claude": TokenDelta(cacheRead: 3_000_000_000)], today: day1)
+        XCTAssertEqual(s.rawWallet, 0)
+
+        PlantEngine.ingest(&s, todayByProvider: ["claude": TokenDelta(cacheRead: 3_010_000_000)], today: day1)
+        XCTAssertEqual(s.rawWallet, 10_000_000, "설치 후 증분이 잘렸다")
+        XCTAssertGreaterThan(s.pot!.water, 0, "설치 후 증분으로 안 자랐다")
     }
 
     /// 첫 설치 크레딧이 갱신마다 다시 들어오면 안 된다.
@@ -69,22 +98,15 @@ final class PlantEngineTests: XCTestCase {
     }
 
     /// 회귀 방지: 날짜 갱신이 seed 판정보다 먼저 오면 `claimedTodayByProvider` 가 [:] 로 채워져
-    /// 첫 설치 분기가 영영 안 타고 **상한이 적용되지 않는다**. `lastDate` 가 빈 새 세이브에서 터진다.
-    func testFreshInstallOnNewDayStillTakesSeedPathWithCap() {
+    /// 첫 설치 분기가 영영 안 타고 **설치 전 로그가 통째로 소급된다**.
+    /// `lastDate` 가 빈 새 세이브에서 터진다.
+    func testFreshInstallOnNewDayStillTakesSeedPath() {
         var s = PlantSave()
         s.pot = PotState(speciesID: "tomato")
         XCTAssertEqual(s.lastDate, "")
         PlantEngine.ingest(&s, todayByProvider: ["claude": TokenDelta(cacheRead: 3_000_000_000)],
                            today: day1)
-        XCTAssertEqual(s.rawWallet, PlantBalance.firstDayRawCap(dailyRaw: PlantBalance.assumedDailyRaw),
-                       "seed 분기를 안 타서 상한 없이 소급됐다")
-
-        // 상한은 **설치 순간 한 번뿐**이다. 그 뒤 같은 날 더 쓰면 증분은 그대로 들어간다 —
-        // 실제로 쓴 토큰을 상한으로 잘라내면 그날 일한 값이 사라진다.
-        PlantEngine.ingest(&s, todayByProvider: ["claude": TokenDelta(cacheRead: 3_010_000_000)],
-                           today: day1)
-        XCTAssertEqual(s.rawWallet, PlantBalance.firstDayRawCap(dailyRaw: PlantBalance.assumedDailyRaw) + 10_000_000,
-                       "설치 후 증분이 상한에 잘렸다")
+        XCTAssertEqual(s.rawWallet, 0, "seed 분기를 안 타서 설치 전 로그가 소급됐다")
     }
 
     /// 프로바이더 로그가 정리돼 스냅샷이 줄어들면 기준을 내리고, 지갑은 깎지 않는다.
@@ -116,14 +138,21 @@ final class PlantEngineTests: XCTestCase {
 
     // MARK: 스트릭
 
+    /// 스트릭은 `credit`(토큰이 들어온 자리)이 센다. `applyWater` 는 아이템으로도 불리는데
+    /// 거기서 세면 **가방의 물을 부어 스트릭을 이어붙일 수 있다** — 그건 "매일 썼다"가 아니다.
     func testStreakGrowsOnConsecutiveDaysAndResetsOnGap() {
         var s = freshSave()
-        PlantEngine.applyWater(&s, mL: 100, today: "2026-09-01")
+        PlantEngine.credit(&s, raw: 1_000, water: 100, today: "2026-09-01")
         XCTAssertEqual(s.streakDays, 1)
-        PlantEngine.applyWater(&s, mL: 100, today: "2026-09-02")
+        PlantEngine.credit(&s, raw: 1_000, water: 100, today: "2026-09-02")
         XCTAssertEqual(s.streakDays, 2)
-        PlantEngine.applyWater(&s, mL: 100, today: "2026-09-05")
+        PlantEngine.credit(&s, raw: 1_000, water: 100, today: "2026-09-05")
         XCTAssertEqual(s.streakDays, 1, "3일 비었는데 스트릭이 이어졌다")
+
+        // 아이템으로 부은 물은 스트릭을 건드리면 안 된다.
+        let kept = s.streakDays
+        PlantEngine.applyWater(&s, mL: 100, today: "2026-09-06")
+        XCTAssertEqual(s.streakDays, kept, "가방의 물로 스트릭이 이어졌다")
     }
 
 
@@ -286,7 +315,9 @@ final class PlantEngineTests: XCTestCase {
 
         // 한 필드가 깨져도 나머지는 살아야 한다.
         var json = try XCTUnwrap(String(data: data, encoding: .utf8))
-        json = json.replacingOccurrences(of: "\"balance\":1234", with: "\"balance\":\"broken\"")
+        // 키 이름은 `rawWallet` 이다. 옛 이름(`balance`)으로 바꾸면 **치환이 일어나지 않아**
+        // 손상되지 않은 JSON 을 검사하게 되고, 테스트가 조용히 아무것도 안 본다.
+        json = json.replacingOccurrences(of: "\"rawWallet\":1234", with: "\"rawWallet\":\"broken\"")
         let lenient = try JSONDecoder().decode(PlantSave.self, from: Data(json.utf8))
         XCTAssertEqual(lenient.rawWallet, 0)
         XCTAssertEqual(lenient.garden.count, 1, "한 필드 손상이 정원을 날렸다")

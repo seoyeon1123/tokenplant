@@ -65,12 +65,13 @@ for rate in (5_000_000, 20_000_000, 105_000_000, 400_000_000):
     c = cycle_water(rate)
     close(c / max(1, rate // RAW_PER_ML), TARGET_CYCLE_DAYS, 1.0, N + f" 하루 {rate}")
 
-N = "testFirstDayNeverFinishesAPlantAtAnyUsageRate"
-# 상한을 고정값(30,000mL)으로 뒀을 때 하루 5M 쓰는 사람은 설치 즉시 이식 버튼을 봤다.
-for rate in (1_000_000, 5_000_000, 20_000_000, 105_000_000, 400_000_000):
-    c = cycle_water(rate); cap = first_day_credit(c)
-    check(cap < threshold(5, c), N, f"하루 {rate} 의 첫날이 Lv.6 을 넘긴다")
-    check(cap / c < 0.12, N, f"하루 {rate} 의 첫날이 사이클의 {cap/c*100:.0f}%")
+N = "testEarlyStageThresholdsAreTinyFractionsOfTheCycle"
+# 옛 테스트는 `cap < threshold(5)`(13%)만 봐서 통과했는데, Lv.5 문턱은 6.75% 였다.
+# 검사 대상이 한 칸 위여서 "이틀치 = Lv.5 시작"을 못 잡았다.
+c = 280_000
+for stage, frac in ((1, 0.00375), (2, 0.0125), (3, 0.03), (4, 0.0675), (5, 0.13)):
+    eq(threshold(stage, c), int(c * frac), N, f"Lv.{stage+1} 문턱이 바뀌었다")
+check(c / 28 > threshold(3, c), N, "하루치가 Lv.4 아래로 내려왔다 — 첫날 정책 재검토")
 
 N = "testCycleIsClampedForExtremeRates"
 eq(cycle_water(1), MIN_CYCLE_WATER, N)
@@ -206,28 +207,72 @@ ingest(s, snap, D1); first = s.raw_wallet
 check(first > 0, N)
 ingest(s, snap, D1); eq(s.raw_wallet, first, N, "같은 스냅샷이 두 번 적립됐다")
 
-N = "testFirstInstallCreditsTodayButCapsIt"
+N = "testFirstInstallCreditsNothing"
 s = Save(); s.pot = Pot(species="tomato")
 eq(s.claimed, None, N)
-ingest(s, {"claude": TD(cr=3000000000)}, D1)
-eq(s.raw_wallet, first_day_raw_cap(ASSUMED_DAILY_RAW), N, "지갑 상한이 안 걸렸다")
-eq(s.pot.water, applied(first_day_credit(s.pot.cycle), 1, False), N, "성장 상한이 안 걸렸다")
+ingest(s, {"claude": TD(cr=3000000000)}, D1)      # 300,000mL 상당 — 그래도 0
+eq(s.raw_wallet, 0, N, "설치 전 토큰이 지갑에 소급됐다")
+eq(s.pot.water, 0, N, "설치 전 토큰으로 자랐다")
+eq(s.pot.stage, 0, N, "씨앗으로 시작하지 않았다")
+eq(s.raw_since, 0, N, "설치 전 몫이 누적에 들어갔다")
 check(s.baseline_set, N); eq(s.last_date, D1, N)
 
-N = "testFirstInstallCreditIsNotRepeated"
+N = "testFreshInstallIsNotThirsty"
+# 첫날 적립이 사라지면서 last_water 도 빈 채로 시작한다.
+# 그걸 "며칠째 안 준 것"으로 읽으면 설치 직후 바싹 마른 씨앗이 뜬다.
 s = Save(); s.pot = Pot(species="tomato")
-snapshot = {"claude": TD(cr=3000000000)}
-ingest(s, snapshot, D1); credited = s.raw_wallet
-ingest(s, snapshot, D1); eq(s.raw_wallet, credited, N, "첫 크레딧이 두 번")
+ingest(s, {"claude": TD(cr=3000000000)}, D1)
+eq(s.last_water_day, "", N, "전제가 깨졌다 — 설치가 물을 줬다")
+eq(thirst_level(s, D1), 0, N, "설치 직후에 목이 말랐다")
+eq(thirst_level(s, "2027-01-01"), 0, N, "한 번도 안 준 씨앗이 바싹 말랐다")
 
-N = "testFreshInstallOnNewDayStillTakesSeedPathWithCap"
+N = "testUsageAfterInstallCreditsInFull"
+s = Save(); s.pot = Pot(species="tomato")
+ingest(s, {"claude": TD(cr=3000000000)}, D1)
+eq(s.raw_wallet, 0, N)
+ingest(s, {"claude": TD(cr=3010000000)}, D1)
+eq(s.raw_wallet, 10_000_000, N, "설치 후 증분이 잘렸다")
+check(s.pot.water > 0, N, "설치 후 증분으로 안 자랐다")
+
+N = "testFreshInstallOnNewDayStillTakesSeedPath"
 s = Save(); s.pot = Pot(species="tomato")
 eq(s.last_date, "", N)
-ingest(s, {"claude": TD(cr=3000000000)}, D1)      # 300,000mL 상당 — 소급하면 즉시 이식
-eq(s.raw_wallet, first_day_raw_cap(ASSUMED_DAILY_RAW), N, "seed 분기를 안 타서 상한 없이 소급됐다")
-# 같은 날 더 쓰면 그만큼 잔액이 더 는다(상한은 첫날에만 걸린다)
-ingest(s, {"claude": TD(cr=3010000000)}, D1)
-eq(s.raw_wallet, first_day_raw_cap(ASSUMED_DAILY_RAW) + 10_000_000, N)
+ingest(s, {"claude": TD(cr=3000000000)}, D1)
+eq(s.raw_wallet, 0, N, "seed 분기를 안 타서 설치 전 로그가 소급됐다")
+
+N = "testFirstInstallFeedsNeitherStream"
+s = Save(); s.pot = Pot(species="tomato")
+ingest(s, {"claude": TD(cr=30000000000)}, D1)
+eq(s.raw_wallet, 0, N); eq(s.pot.water, 0, N)
+eq(s.streak, 0, N, "설치만으로 스트릭이 시작됐다")
+
+N = "testPouringToTheCapStillLeavesMostOfTheWallet"
+# 물은 값이 하루치의 1/5 이라 mL 도 하루 성장의 1/5 이어야 한다(설계 예산 ×1.40).
+# 상수로 환산하던 동안에는 캐시읽기가 많은 사람에게 1.57 이 나왔다.
+def _seeded_three_days():
+    s = Save(); s.pot = Pot(species="tomato"); s.claimed = {}
+    for d in ("2026-09-01", "2026-09-02", "2026-09-03"):
+        s.claimed = {}
+        ingest(s, {"claude": TD(cr=ASSUMED_DAILY_RAW)}, d)
+    return s
+
+_d4 = "2026-09-04"
+_lazy, _busy = _seeded_three_days(), _seeded_three_days()
+_before = _lazy.pot.water
+for _s in (_lazy, _busy):
+    _s.claimed = {}
+    ingest(_s, {"claude": TD(cr=ASSUMED_DAILY_RAW)}, _d4)
+_purse = _busy.raw_wallet
+_poured = 0
+while True:
+    if buy(_busy, "water")[0] != "ok": break
+    if use(_busy, "water", _d4)[0] != "ok": break
+    _poured += 1
+_ratio = (_busy.pot.water - _before) / (_lazy.pot.water - _before)
+close(_ratio, 1.4, 0.05, N + f" 물 배율이 {_ratio:.3f}")
+eq(_poured, DAILY_WATER_USES, N, "상한이 아니라 지갑이 먼저 떨어졌다")
+check(_busy.raw_wallet / _purse > 0.5, N, "상한까지 부었는데 지갑이 절반도 안 남았다")
+
 
 # ══════════ 두 물길 ══════════
 #
@@ -834,16 +879,17 @@ check(goal is not None, N, "목표가 없다")
 check(goal[0] not in DECORATION, N, f"장식({goal[0]})이 목표로 걸렸다")
 eq(goal[0], "fertilizer", N, "장식 다음으로 싼 성장 품목이 아니다")
 
-N = "testLedgerBalancesAfterTheFirstDayCap"
+N = "testInstallLeavesTheLedgerAtZero"
 # **실제로 화면에 거짓말이 찍혔던 자리다.**
 #
-# 예전엔 번 것을 `raw_since`(로그가 말한 양)로, 쓴 것을 `raw_since − 지갑` 으로 뺐다.
-# 첫날은 상한에 걸려 지갑에 일부만 들어오는데 `raw_since` 에는 전부 들어간다 —
-# 그 차액이 영원히 "쓴 것"으로 찍혀서, 한 번도 안 산 사람에게도 지출이 보였다.
+# 예전엔 첫날 상한에 걸린 분이 `raw_since` 에는 들어가고 지갑에는 안 들어가서,
+# 그 차액이 영원히 "쓴 것"으로 찍혔다 — 한 번도 안 산 사람에게 지출이 보였다.
+# 상한이 사라져 그 틈이 구조적으로 없어졌지만, 소급이 되살아나면 거짓말도 돌아온다.
 s = fresh(); s.claimed = None
 big = TD(o=ASSUMED_DAILY_RAW * 10)          # 첫날 로그가 하루치의 10배
 ingest(s, {"claude": big}, D1)
-check(s.raw_since > s.raw_wallet, N, "첫날 상한이 안 걸렸다 — 이 검증이 의미가 없다")
+eq(s.raw_since, 0, N, "설치 전 몫이 누적에 들어갔다")
+eq(s.raw_wallet, 0, N, "설치 전 몫이 지갑에 들어갔다")
 eq(spent_total(s), 0, N, "아무것도 안 샀는데 쓴 것이 있다")
 eq(earned_total(s) - spent_total(s), s.raw_wallet, N, "번 것 − 쓴 것 ≠ 지갑")
 

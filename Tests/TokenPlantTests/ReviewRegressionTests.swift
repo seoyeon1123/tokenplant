@@ -55,7 +55,10 @@ final class ReviewRegressionTests: XCTestCase {
             PlantEngine.credit(&s, raw: 5_000_000,
                                water: 5_000_000 / PlantBalance.rawPerML, today: day(k))
         }
-        s.pot?.cycleWater = PlantEngine.seedCycle(s)
+        // 지역 변수를 거친다. `s.pot?.x = f(s)` 는 `s.pot` 을 고치는 접근이 우변 평가 내내
+        // 열려 있어서 배타적 접근 위반이다(Swift 6 에서 컴파일 에러).
+        let fitted = PlantEngine.seedCycle(s)
+        s.pot?.cycleWater = fitted
         s.rawWallet = ShopItem.potSlot.price(dailyRaw: PlantBalance.dailyRawRate(s.dailyRaw)) * 3
 
         XCTAssertEqual(PlantEngine.buy(.potSlot, &s), .ok)

@@ -31,16 +31,8 @@ FERT_MAX_DAYS = 21
 # 한도 창 소진 보상 — 만료되는 자원을 남는 것으로 바꾼다. 단위는 mL.
 WINDOW_SESSION, WINDOW_WEEKLY = 10_000_000, 50_000_000
 ASSUMED_SESSION_WINDOWS, ASSUMED_WEEKLY_WINDOWS = 11, 3
-FIRST_DAY_CREDIT_DAYS = 2
-
-
-def first_day_credit(cycle):
-    # 상한도 목표에 비례해야 한다 — 고정값이면 적게 쓰는 사람의 첫날이 사이클을 통째로 채운다.
-    return max(1, cycle * FIRST_DAY_CREDIT_DAYS // TARGET_CYCLE_DAYS)
-
-
-def first_day_raw_cap(daily_raw):
-    return max(1, daily_raw * FIRST_DAY_CREDIT_DAYS)
+# 첫 설치는 기준선만 잡고 아무것도 적립하지 않는다 — 옛 "이틀치 상한"은 제거됐다.
+# 그 값(사이클의 7.14%)이 Lv.5 문턱(6.75%)을 넘겨서 거의 모든 설치가 Lv.5 로 시작했다.
 
 # 하루 유입 — 화면의 "며칠치" 환산의 분모.
 # 상수로 박지 않고 앱이 직접 재는 값이다. 사람마다 하루 유입이 10배씩 달라서,
@@ -60,11 +52,12 @@ def daily_water_from_tokens():
     return ASSUMED_DAILY_RAW // RAW_PER_ML
 
 
-def water_ml(daily_raw=None):
-    # 하루치 지갑을 통째로 물에 쏟으면 하루 자동 성장만큼 더 자란다 = 최대 가속 2배.
-    # 값도 하루치의 1/5 이라 누구에게나 천장이 2배다.
+def water_ml(daily_raw=None, raw_per_ml=None):
+    # 값이 하루치의 1/5 이라 mL 도 그 사람 하루 성장의 1/5 이어야 1:1 이다.
+    # 상수로 환산하면 캐시읽기가 많은 사람이 더 받아서 물 배율이 1.40 대신 1.57 이 된다.
     if daily_raw is None: daily_raw = ASSUMED_DAILY_RAW
-    return max(1, daily_raw // RAW_PER_ML // 5)
+    if raw_per_ml is None: raw_per_ml = RAW_PER_ML
+    return max(1, daily_raw // max(1, raw_per_ml) // 5)
 
 
 @dataclass
@@ -328,14 +321,7 @@ def ingest(s, today_by_provider, today):
         s.claimed = dict(today_by_provider)
         s.last_date = today
         s.baseline_set = True
-        snap = TD()
-        for v in today_by_provider.values(): snap = snap + v
-        snap = snap.clamped()
-        s.raw_since += snap.raw
-        # 첫날은 두 물길 모두 상한까지만 — 안 그러면 설치 전 로그가 소급된다.
-        cycle = s.pot.cycle if s.pot else cycle_water(ASSUMED_DAILY_RAW)
-        credit(s, min(first_day_raw_cap(ASSUMED_DAILY_RAW), snap.raw),
-               min(first_day_credit(cycle), water_from(snap)), today)
+        # 적립 없음. 설치 전에 쓴 토큰은 내 것이 아니다.
         return
     baseline = s.claimed
     if s.last_date != today:
@@ -589,7 +575,8 @@ def use(s, item, today, roll=0):
         s.water_uses_today += 1
         # 정액. 자동 성장과 같은 길로 들어가 보너스도 똑같이 받는다.
         consume(s, item)
-        return ("ok", apply_water(s, water_ml(daily_rate(s.daily_raw)), today))
+        ratio = measured_raw_per_ml(s.daily_raw, s.daily_water) or RAW_PER_ML
+        return ("ok", apply_water(s, water_ml(daily_rate(s.daily_raw), ratio), today))
     if item == "fertilizer":
         # **남은 기간에 이어 붙인다.** 배수는 안 겹치고 기간만 는다 —
         # 예전엔 7일이 다시 시작이라 돌고 있는 동안 쓰면 남은 날이 날아갔고,

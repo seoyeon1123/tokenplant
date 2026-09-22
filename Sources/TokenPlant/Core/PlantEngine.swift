@@ -222,26 +222,17 @@ enum PlantEngine {
                        today: String,
                        now: Date = Date()) {
         // 순서가 중요하다. 날짜 갱신을 먼저 하면 `claimedTodayByProvider` 가 [:] 로 채워져
-        // 첫 설치 분기가 영영 안 타고 상한이 적용되지 않는다. 그래서 seed 를 먼저 본다.
+        // 첫 설치 분기가 영영 안 타고 **설치 전 로그가 통째로 소급된다.** 그래서 seed 를 먼저 본다.
         guard var baseline = save.claimedTodayByProvider else {
-            // 첫 설치 — 오늘치는 인정하고 `firstDayCreditCap` 으로 막는다.
+            // 첫 설치 — 기준선만 잡고 **아무것도 적립하지 않는다.**
+            //
+            // 오늘 누적에는 설치 전에 쓴 몫이 들어 있다. 그걸 조금이라도 인정하면
+            // 그 값이 첫 화면의 단계를 정하는데, 단계 문턱이 앞쪽에 몰려 있어서
+            // "조금"의 폭이 아주 좁다(자세한 건 `PlantBalance` 의 「첫 설치」 참고).
+            // 여기서 기준선만 잡아 두면 다음 갱신부터 **설치 이후 증분만** 들어온다.
             save.claimedTodayByProvider = todayByProvider
             save.lastDate = today
             save.installBaselineSet = true
-
-            let snapshot = todayByProvider.values.reduce(TokenDelta()) { $0 + $1 }.clampedToZero
-            save.rawSinceInstall += snapshot.raw
-            // 첫날은 상한까지만 인정하고 넘치는 분은 버린다 —
-            // 그대로 넣으면 설치 전 로그가 소급돼 첫 화면부터 거목에 지갑이 가득이다.
-            // 상한은 이 그루의 목표에 비례한다 — 고정값이면 적게 쓰는 사람의 첫날이
-            // 사이클을 통째로 채워버린다.
-            let cycle = save.pot?.cycleWater
-                ?? PlantBalance.cycleWater(dailyRaw: PlantBalance.assumedDailyRaw)
-            let mL = min(PlantBalance.firstDayCredit(cycle: cycle),
-                         PlantBalance.water(from: snapshot))
-            let raw = min(PlantBalance.firstDayRawCap(dailyRaw: PlantBalance.assumedDailyRaw),
-                          snapshot.raw)
-            credit(&save, raw: raw, water: mL, today: today, now: now)
             return
         }
 
@@ -540,7 +531,10 @@ enum PlantEngine {
             // 유입 경로마다 규칙이 갈리면 나중에 아무도 못 맞춘다.
             // 양도 **그 사람 하루치의 1/5** 이라 1:1 등가 교환이고, 총량은 하루 상한이 막는다.
             consume(item, &save)
-            let mL = Water.mL(dailyRaw: PlantBalance.dailyRawRate(save.dailyRaw))
+            // 실측 비율로 환산한다 — 상수로 하면 토큰 구성에 따라 물 값어치가 달라진다.
+            let ratio = PlantBalance.measuredRawPerML(raw: save.dailyRaw, water: save.dailyWater)
+                ?? PlantBalance.rawPerML
+            let mL = Water.mL(dailyRaw: PlantBalance.dailyRawRate(save.dailyRaw), rawPerML: ratio)
             let gained = applyWater(&save, mL: mL, today: today, now: now)
             return .ok(waterGained: gained)
 

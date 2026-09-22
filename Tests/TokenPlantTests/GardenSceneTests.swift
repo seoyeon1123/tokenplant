@@ -188,16 +188,6 @@ final class GardenSceneTests: XCTestCase {
         XCTAssertEqual(grid.first?.count, layout.width)
     }
 
-    /// 장식은 길이나 연못이 있는 티어부터 놓인다 — 창가 창틀에 벤치를 놓을 자리가 없다.
-    func testDecorationsAppearOnlyOnOutdoorTiers() {
-        let sill = compose("sill")
-        let sillWithBench = compose("sill", decorations: ["bench"])
-        XCTAssertEqual(sill, sillWithBench, "창가에 장식이 놓였다")
-
-        let yard = compose("yard", entries: 6)
-        let yardWithBench = compose("yard", entries: 6, decorations: ["bench"])
-        XCTAssertNotEqual(yard, yardWithBench, "뒷마당에 장식이 안 놓였다")
-    }
 
     /// 장식 세 개가 서로 다른 자리에 놓여야 한다 — 같은 자리면 하나만 보인다.
     func testThreeDecorationsUseThreeDistinctSpots() {
@@ -339,6 +329,10 @@ final class GardenSceneTests: XCTestCase {
     // MARK: 장식이 **언제부터** 보이나
 
     /// 모든 티어에서 그려져야 한다.
+    ///
+    /// 여기 `testDecorationsAppearOnlyOnOutdoorTiers`("창가엔 안 놓인다")가 나란히 남아 있었다.
+    /// 정면으로 모순되는 두 테스트가 한 파일에 있었던 셈인데, 맥에서 빌드를 안 돌리는 동안
+    /// 아무도 몰랐다. 새 규칙이 이긴다 — **뽑기로 받은 건 받은 자리에서 보여야 한다.**
     ///
     /// 예전엔 뒷마당(6그루)부터만 그렸다. 장식이 셋뿐이고 전부 직접 사는 것이었을 때는
     /// 그래도 됐는데, 뽑기가 생기면서 깨졌다: 이틀째에 뽑아서 "정원에 놓았어요"라고

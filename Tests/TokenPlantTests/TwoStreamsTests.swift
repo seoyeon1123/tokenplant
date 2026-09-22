@@ -118,20 +118,38 @@ final class TwoStreamsTests: XCTestCase {
     func testPouringToTheCapStillLeavesMostOfTheWallet() {
         let snap = ["claude": TokenDelta(cacheRead: PlantBalance.assumedDailyRaw)]
 
-        var lazy = freshSave()
-        PlantEngine.ingest(&lazy, todayByProvider: snap, today: day1)
+        // **3일치 이력을 먼저 쌓는다.** 환산비율은 실측이라 사흘이 있어야 잡히고,
+        // 그 전에는 상수로 환산해서 물이 설계보다 많이 들어간다(1.40 대신 1.57).
+        func seeded() -> PlantSave {
+            var s = freshSave()
+            for d in ["2026-09-01", "2026-09-02", "2026-09-03"] {
+                s.claimedTodayByProvider = [:]        // 날이 바뀐 셈
+                PlantEngine.ingest(&s, todayByProvider: snap, today: d)
+            }
+            return s
+        }
+        let day4 = "2026-09-04"
 
-        var busy = freshSave()
-        PlantEngine.ingest(&busy, todayByProvider: snap, today: day1)
+        var lazySave = seeded()
+        var busy = seeded()
+        let before = lazySave.pot!.water
+
+        lazySave.claimedTodayByProvider = [:]
+        PlantEngine.ingest(&lazySave, todayByProvider: snap, today: day4)
+        busy.claimedTodayByProvider = [:]
+        PlantEngine.ingest(&busy, todayByProvider: snap, today: day4)
+
         let purse = busy.rawWallet
         var poured = 0
         while PlantEngine.buy(.water, &busy) == .ok {
-            guard case .ok = PlantEngine.use(.water, &busy, today: day1) else { break }
+            guard case .ok = PlantEngine.use(.water, &busy, today: day4) else { break }
             poured += 1
         }
 
-        let ratio = Double(busy.pot!.water) / Double(lazy.pot!.water)
-        XCTAssertEqual(ratio, 1.4, accuracy: 0.1, "부지런히 사도 1.4배가 안 나온다 (\(ratio))")
+        // **하루치로 잰다.** 누적 물통끼리 견주면 이력이 길수록 배율이 묽어져서
+        // 설계 예산(물 ×1.40)을 검증하는 게 아니라 이력 길이를 재게 된다.
+        let ratio = Double(busy.pot!.water - before) / Double(lazySave.pot!.water - before)
+        XCTAssertEqual(ratio, 1.4, accuracy: 0.05, "물 배율이 설계 예산(1.40)에서 벗어났다 (\(ratio))")
         XCTAssertEqual(poured, PlantBalance.dailyWaterUses, "상한이 아니라 지갑이 먼저 떨어졌다")
         XCTAssertGreaterThan(Double(busy.rawWallet) / Double(purse), 0.5,
                              "상한까지 부었는데 지갑이 절반도 안 남았다")
@@ -147,7 +165,9 @@ final class TwoStreamsTests: XCTestCase {
         var young = freshSave()
         young.inventory[ShopItem.water.rawValue] = 1
         var old = freshSave()
-        old.pot!.water = PlantBalance.threshold(stage: 8, cycle: old.pot!.cycleWater)
+        // 우변을 먼저 담는다 — `old.pot!.x = f(old.pot!…)` 는 배타적 접근 위반이다.
+        let nearTop = PlantBalance.threshold(stage: 8, cycle: old.pot!.cycleWater)
+        old.pot!.water = nearTop
         old.pot!.stageIndex = 8
         old.inventory[ShopItem.water.rawValue] = 1
 
@@ -340,14 +360,15 @@ final class TwoStreamsTests: XCTestCase {
         XCTAssertLessThan(PlantEngine.price(.water, s), ShopItem.water.price)
     }
 
-    /// 첫 설치에 전체 로그가 소급되면 첫 화면부터 거목에 지갑이 가득이다.
-    func testFirstInstallCapsBothStreams() {
+    /// 첫 설치에는 **두 물길 다** 0 이다. 한쪽만 주면 앞뒤가 안 맞는다.
+    func testFirstInstallFeedsNeitherStream() {
         var s = PlantSave()
         s.pot = PotState(speciesID: "tomato")
         PlantEngine.ingest(&s, todayByProvider: ["claude": TokenDelta(cacheRead: 30_000_000_000)],
                            today: day1)
-        XCTAssertLessThanOrEqual(s.rawWallet, PlantBalance.firstDayRawCap(dailyRaw: PlantBalance.assumedDailyRaw))
-        XCTAssertLessThan(s.pot!.stageIndex, 6, "설치 직후 만렙 근처가 됐다")
+        XCTAssertEqual(s.rawWallet, 0, "지갑에 설치 전 토큰이 들어갔다")
+        XCTAssertEqual(s.pot!.water, 0, "설치 전 토큰으로 자랐다")
+        XCTAssertEqual(s.streakDays, 0, "설치만으로 스트릭이 시작됐다")
     }
 
     func testWalletAndDailyRawSurviveSaveRoundTrip() throws {

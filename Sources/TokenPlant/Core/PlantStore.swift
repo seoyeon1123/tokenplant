@@ -453,6 +453,17 @@ final class PlantStore {
     /// 최근 14일 달력일 평균 유입(원시 토큰/일). 표본이 3일 미만이면 실측 기본값.
     var dailyRate: Int { PlantBalance.dailyRawRate(save.dailyRaw) }
 
+    /// 물 한 개가 실제로 넣는 기본 mL — **엔진과 같은 환산비율**을 쓴다.
+    ///
+    /// 화면이 상수로 환산한 숫자를 보여주고 엔진은 실측으로 부으면 둘이 어긋난다.
+    /// 예전에 같은 실수를 한 적이 있다(가방 문구가 보너스를 먹인 뒤 값을 찍었다).
+    /// 한 곳에서 계산해 UI 가 갖다 쓰게 둔다.
+    var waterML: Int {
+        let ratio = PlantBalance.measuredRawPerML(raw: save.dailyRaw, water: save.dailyWater)
+            ?? PlantBalance.rawPerML
+        return Water.mL(dailyRaw: dailyRate, rawPerML: ratio)
+    }
+
     /// 측정된 값인가, 아직 기본값을 쓰는 중인가. 화면에서 "예상"과 "실측"을 구분해 쓴다 —
     /// 남의 평균으로 계산한 값을 자기 값인 척 보여주면 그게 제일 나쁘다.
     var dailyRateIsMeasured: Bool {

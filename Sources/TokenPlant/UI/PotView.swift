@@ -522,7 +522,7 @@ struct PotQuickSlots: View {
             guard left > 0 else {
                 return "오늘은 다 줬어요 — 안 쓴 토큰은 지갑에 그대로 남습니다"
             }
-            return "+\(Water.mL(dailyRaw: store.dailyRate).formatted()) mL · 오늘 \(left)번 남음"
+            return "+\(store.waterML.formatted()) mL · 오늘 \(left)번 남음"
         case .fertilizer:
             return blocked(item) ? "이미 돌고 있어요 — 끝나고 쓰면 7일이 온전히 붙습니다"
                                  : "\(PlantBalance.fertilizerDays)일간 들어오는 물 +\(PlantBalance.fertilizerBonusPercent)%"

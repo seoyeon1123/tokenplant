@@ -37,6 +37,14 @@ final class PlantStoreTests: XCTestCase {
         PlantStore(url: url, clock: clock(at))
     }
 
+    /// 설치 기준선만 잡아 둔다.
+    ///
+    /// v0.1.1 부터 **첫 갱신은 아무것도 적립하지 않는다**(설치 전 로그를 소급하지 않으려고).
+    /// 그래서 "토큰을 썼다"를 재현하려면 기준선을 먼저 잡고 그 뒤에 사용량이 들어와야 한다.
+    private func install(_ store: PlantStore, on day: String = "2026-09-09") {
+        store.update(todayUsageByProvider: [:], todayDate: day)
+    }
+
     /// 저장 파일을 직접 깔고 읽게 한다.
     /// 화분 슬롯은 150,000mL 이라 테스트 안에서 정직하게 벌어 사기엔 너무 비싸다.
     private func seedFile(_ json: String) throws -> PlantStore {
@@ -73,6 +81,7 @@ final class PlantStoreTests: XCTestCase {
         let first = makeStore()
         let species = first.pot!.speciesID
         let planted = first.pot!.plantedAt
+        install(first)
         first.update(todayUsageByProvider: ["claude": TokenDelta(output: 40_000)],
                      todayDate: "2026-09-09")
         let water = first.pot!.water
@@ -152,7 +161,7 @@ final class PlantStoreTests: XCTestCase {
         XCTAssertEqual(store.pot?.stageIndex, PlantBalance.stageCount - 1)
         XCTAssertEqual(store.pot?.water, 0)
         // 실제로 그려지는지까지 확인한다 — clamp 의 목적이 이것이다.
-        XCTAssertEqual(PotSprites.grid(stageIndex: store.pot!.stageIndex).count, PotSprites.size)
+        XCTAssertEqual(PotSprites.grid(stageIndex: store.pot!.stageIndex, motif: store.species(0).motif).count, PotSprites.size)
         XCTAssertFalse(store.stageName.isEmpty)
     }
 
@@ -175,6 +184,7 @@ final class PlantStoreTests: XCTestCase {
         let store = makeStore()
         let snap = ["claude": TokenDelta(input: 1_000, output: 50_000, cacheRead: 5_000_000)]
 
+        install(store)
         store.update(todayUsageByProvider: snap, todayDate: "2026-09-09")
         let after = store.wallet
         let grown = store.pot!.water
@@ -191,6 +201,7 @@ final class PlantStoreTests: XCTestCase {
         let store = makeStore()
         let snap = ["claude": TokenDelta(input: 1_000, output: 100_000,
                                          cacheWrite: 400_000, cacheRead: 20_000_000)]
+        install(store)
         store.update(todayUsageByProvider: snap, todayDate: "2026-09-09")
 
         XCTAssertEqual(store.todayRaw, 20_501_000)
@@ -203,14 +214,20 @@ final class PlantStoreTests: XCTestCase {
         XCTAssertGreaterThan(store.save.rawSinceInstall, 0, "누적은 남아 있어야 한다")
     }
 
-    /// 첫 설치에 그날 사용량 전체를 인정하면 첫 화면부터 거목에 지갑이 가득이다.
-    func testFirstInstallIsCappedNotBackfilled() {
+    /// 설치한 사람이 처음 보는 화면은 **씨앗**이어야 한다.
+    /// 설치 전에 그날 쓴 토큰이 아무리 많아도 한 톨도 안 센다.
+    func testFirstInstallStartsAtSeed() {
         let store = makeStore()
-        // 실측 하루(캐시읽기 3B) = 약 300,000mL. 두 물길 모두 상한이 걸려야 한다.
+        // 실측 하루(캐시읽기 3B) = 약 300,000mL. 그래도 0 이다.
         store.update(todayUsageByProvider: ["claude": TokenDelta(cacheRead: 3_000_000_000)],
                      todayDate: "2026-09-09")
-        XCTAssertLessThanOrEqual(store.wallet, PlantBalance.firstDayRawCap(dailyRaw: PlantBalance.assumedDailyRaw))
-        XCTAssertLessThan(store.pot!.stageIndex, 5, "설치 직후 만렙 근처가 됐다")
+        XCTAssertEqual(store.wallet, 0, "설치 전 토큰이 지갑에 소급됐다")
+        XCTAssertEqual(store.pot!.stageIndex, 0, "씨앗으로 시작하지 않았다")
+
+        // 그 뒤 실제로 더 쓰면 그때부터 자란다.
+        store.update(todayUsageByProvider: ["claude": TokenDelta(cacheRead: 3_050_000_000)],
+                     todayDate: "2026-09-09")
+        XCTAssertGreaterThan(store.wallet, 0, "설치 후 사용분이 안 들어왔다")
     }
 
     // MARK: 아이템 · 연출 신호
@@ -239,6 +256,7 @@ final class PlantStoreTests: XCTestCase {
     /// 사도 이미 자란 건 안 줄어든다 — 두 물길이 서로 뺏지 않는다는 걸 스토어 층에서도 확인한다.
     func testBuyingNeverShrinksThePlant() {
         let store = makeStore()
+        install(store)
         store.update(todayUsageByProvider: ["claude": TokenDelta(output: 400_000)],
                      todayDate: "2026-09-09")
         let grown = store.pot!.water

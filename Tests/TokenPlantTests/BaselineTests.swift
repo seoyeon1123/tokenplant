@@ -206,15 +206,23 @@ final class BaselineTests: XCTestCase {
     /// 으로 뺐다. 첫날은 상한에 걸려 지갑에 일부만 들어오는데 `rawSinceInstall` 에는
     /// 전부 들어간다 — 그 차액이 영원히 "쓴 것"으로 찍혀서, 한 번도 안 산 사람에게도
     /// 지출이 보였다. 그래서 장부를 지갑이 오르는 자리와 내리는 자리에서 각각 센다.
-    func testLedgerBalancesAfterTheFirstDayCap() {
+    /// 첫 설치 뒤 세 값이 **다 같이 0** 이어야 한다.
+    ///
+    /// 옛 버전에서 화면에 거짓말이 찍혔던 자리다. 첫날 상한에 걸린 분은
+    /// `rawSinceInstall` 에는 들어가고 지갑에는 안 들어가서, 그 차액이 영원히
+    /// "쓴 것"으로 찍혔다 — 한 번도 안 산 사람에게 지출이 보였다.
+    /// 상한이 사라지면서 그 틈이 구조적으로 없어졌는데, 누가 소급을 되살리면
+    /// 같은 거짓말이 그대로 돌아오므로 여기서 막는다.
+    func testInstallLeavesTheLedgerAtZero() {
         var s = PlantSave()
         s.pot = PotState(speciesID: "tomato", cycleWater: PlantBalance.legacyCycleWater)
-        // 첫날 로그가 하루치의 10배 — 상한에 확실히 걸린다.
+        // 첫날 로그가 하루치의 10배 — 소급이 있었다면 여기서 크게 튄다.
         let big = ["claude": TokenDelta(output: PlantBalance.assumedDailyRaw * 10)]
         PlantEngine.ingest(&s, todayByProvider: big, today: day1)
 
-        XCTAssertGreaterThan(s.rawSinceInstall, s.rawWallet,
-                             "첫날 상한이 안 걸렸다 — 이 검증이 의미가 없다")
+        XCTAssertEqual(s.rawSinceInstall, 0, "설치 전 몫이 누적에 들어갔다")
+        XCTAssertEqual(s.rawWallet, 0, "설치 전 몫이 지갑에 들어갔다")
+        XCTAssertEqual(s.rawSinceInstall, s.rawWallet, "누적과 지갑이 설치 시점부터 어긋났다")
         XCTAssertEqual(s.rawSpentTotal, 0, "아무것도 안 샀는데 쓴 것이 있다")
         XCTAssertEqual(s.rawEarnedTotal - s.rawSpentTotal, s.rawWallet, "번 것 − 쓴 것 ≠ 지갑")
     }

@@ -57,17 +57,30 @@ final class PlantBalanceTests: XCTestCase {
         }
     }
 
-    /// 첫날 크레딧이 사이클을 통째로 채우면 안 된다 — 설치하자마자 이식 버튼이 떠 있게 된다.
-    /// 상한을 고정값(30,000mL)으로 뒀을 때 하루 5M 쓰는 사람에게 실제로 그랬다.
-    func testFirstDayNeverFinishesAPlantAtAnyUsageRate() {
-        for daily in [1_000_000, 5_000_000, 20_000_000, 105_000_000, 400_000_000] {
-            let cycle = PlantBalance.cycleWater(dailyRaw: daily)
-            let cap = PlantBalance.firstDayCredit(cycle: cycle)
-            XCTAssertLessThan(cap, PlantBalance.threshold(stage: 5, cycle: cycle),
-                              "하루 \(daily) 쓰는 사람의 첫날이 Lv.6 을 넘긴다")
-            XCTAssertLessThan(Double(cap) / Double(cycle), 0.12,
-                              "하루 \(daily) 쓰는 사람의 첫날이 사이클의 12% 를 넘는다")
+    /// 단계 문턱이 앞쪽에 얼마나 몰려 있는지 못 박아 둔다.
+    ///
+    /// 이걸 놓쳐서 사고가 났다. 옛 첫날 상한은 "이틀치"(사이클의 2/28 = 7.14%)였고,
+    /// 옛 테스트는 `cap < threshold(stage: 5)`(13%)만 봐서 **통과했다.**
+    /// 그런데 Lv.5 문턱이 6.75% 라 7.14% 는 이미 그걸 넘는다 — 검사 대상이 한 칸 위였다.
+    /// 사이클의 몇 퍼센트인지로는 "몇 단계로 보이는지"를 알 수 없다는 게 교훈이다.
+    func testEarlyStageThresholdsAreTinyFractionsOfTheCycle() {
+        let cycle = 280_000                       // 28일치, 하루 10,000mL 로 읽기 쉽게
+        let expected: [(Int, Double)] = [
+            (1, 0.00375),   // 발아   — 0.1일
+            (2, 0.0125),    // 떡잎   — 0.35일
+            (3, 0.03),      // 어린잎 — 0.84일
+            (4, 0.0675),    // 자란 줄기 — 1.89일  ← 이틀치가 여길 넘는다
+            (5, 0.13),      // 꽃봉오리 — 3.64일
+        ]
+        for (stage, fraction) in expected {
+            XCTAssertEqual(PlantBalance.threshold(stage: stage, cycle: cycle),
+                           Int(Double(cycle) * fraction),
+                           "Lv.\(stage + 1) 문턱이 바뀌었다 — 첫날 동작을 다시 확인할 것")
         }
+        // 하루치(1/28 = 3.57%)만 인정해도 Lv.4 다. 그래서 첫날은 0 이다.
+        XCTAssertGreaterThan(Double(cycle) / 28.0,
+                             Double(PlantBalance.threshold(stage: 3, cycle: cycle)),
+                             "하루치가 Lv.4 아래로 내려왔다 — 첫날 정책을 재검토할 것")
     }
 
     /// 목표는 심을 때 한 번 잡히고 끝까지 안 움직인다.
