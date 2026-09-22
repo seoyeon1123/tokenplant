@@ -1,0 +1,18 @@
+# Swift / SwiftPM
+.build/
+.swiftpm/
+*.xcodeproj
+*.xcworkspace
+Package.resolved
+
+# 빌드 산물 — 릴리스 asset 은 GitHub Releases 로 올린다
+dist/
+
+# 파이썬 검사기
+__pycache__/
+*.pyc
+
+# 작업용 찌꺼기
+_to_delete/
+*.zip
+.DS_Store

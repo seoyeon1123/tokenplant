@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>TokenPlant</string>
+	<key>CFBundleDisplayName</key>
+	<string>TokenPlant</string>
+	<key>CFBundleExecutable</key>
+	<string>TokenPlant</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.tokenplant.TokenPlant</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+
+	<!-- build-app.sh 가 VERSION 파일을 읽어 이 두 줄을 채운다. 직접 고치지 말 것. -->
+	<key>CFBundleShortVersionString</key>
+	<string>__VERSION__</string>
+	<key>CFBundleVersion</key>
+	<string>__BUILD__</string>
+
+	<!-- 메뉴바 전용 앱. Dock 아이콘도 앱 전환기(Cmd+Tab)에도 안 나온다.
+	     이걸 빼면 메뉴바 아이콘과 Dock 아이콘이 둘 다 떠서 같은 앱이 두 개처럼 보인다. -->
+	<key>LSUIElement</key>
+	<true/>
+
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>MIT License. PokeTokenBar (chattymin) 의 구조를 따릅니다.</string>
+</dict>
+</plist>

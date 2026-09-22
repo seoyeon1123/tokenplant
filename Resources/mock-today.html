@@ -1,0 +1,246 @@
+<title>오늘 블록 시안 v2</title>
+<style>
+  :root{
+    --bg:#eef2f7; --card:#f4f7fb; --ink:#1d1d1f; --ink2:#6b6b70; --ink3:#9a9aa0;
+    --accent:#0a6cff; --green:#1c8a4a; --orange:#b85c00; --rule:#00000012;
+    --track:#0000001a; --bad:#c4562e;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#1b1d20; --card:#26292d; --ink:#f2f2f4; --ink2:#a6a6ac; --ink3:#78787f;
+      --accent:#4e9bff; --green:#5fd08a; --orange:#f0a35a; --rule:#ffffff14;
+      --track:#ffffff24; --bad:#e8825c;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#1b1d20; --card:#26292d; --ink:#f2f2f4; --ink2:#a6a6ac; --ink3:#78787f;
+    --accent:#4e9bff; --green:#5fd08a; --orange:#f0a35a; --rule:#ffffff14;
+    --track:#ffffff24; --bad:#e8825c;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding-inline:16px; background:var(--bg); color:var(--ink);
+    font:14px -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard",sans-serif;
+    line-height:1.6; word-break:keep-all;
+  }
+  .page{max-width:1120px; margin-inline:auto; padding-block:36px 64px}
+  h1{font-size:22px; font-weight:700; margin:0 0 4px; letter-spacing:-.02em}
+  .sub{color:var(--ink2); font-size:13px; margin:0 0 30px; max-width:66ch}
+  h2{font-size:15px; font-weight:650; margin:40px 0 12px; letter-spacing:-.01em}
+
+  .row{display:flex; flex-wrap:wrap; gap:20px; align-items:flex-start}
+  .col{flex:0 0 320px; max-width:100%}
+  .cap{font-size:11px; font-weight:600; color:var(--ink2); margin-bottom:6px;
+       display:flex; align-items:center; gap:6px}
+  .dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex:none}
+  .dot.old{background:var(--bad)} .dot.new{background:var(--green)} .dot.alt{background:var(--accent)}
+  .note{font-size:11.5px; color:var(--ink3); margin-top:8px; line-height:1.6}
+  .note b{color:var(--ink2)}
+
+  .pop{
+    width:320px; max-width:100%; background:var(--card); border-radius:12px;
+    padding:13px; border:1px solid var(--rule);
+    box-shadow:0 8px 24px #00000018, 0 1px 2px #00000010;
+  }
+  .lab{font-size:10px; font-weight:500; color:var(--ink3);
+       font-family:ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.02em}
+  .big{font-size:25px; font-weight:600; letter-spacing:-.02em; line-height:1.15}
+  .mid{font-size:15px; font-weight:600; letter-spacing:-.01em}
+  .unit{font-size:12px; color:var(--ink2); font-weight:400}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-variant-numeric:tabular-nums}
+  .r{margin-left:auto; text-align:right}
+  .flex{display:flex; align-items:baseline; gap:6px}
+  .sep{height:1px; background:var(--rule); margin:11px 0}
+
+  .bar{position:relative; height:5px; border-radius:3px; background:var(--track); margin:7px 0 0}
+  .bar > i{position:absolute; inset:0 auto 0 0; border-radius:3px; background:var(--accent)}
+  .bar > u{position:absolute; top:-3px; bottom:-3px; width:1.5px; background:var(--ink3); opacity:.85}
+  .bar.g > i{background:var(--green)}
+  .barcap{display:flex; justify-content:space-between; font-size:10px; color:var(--ink3); margin-top:5px}
+  .barcap b{color:var(--ink2)}
+
+  .pill{display:inline-block; font-size:10px; padding:1px 6px; border-radius:20px; font-weight:600;
+        background:#1c8a4a1f; color:var(--green)}
+  .warnline{font-size:10px; color:var(--ink3); margin-top:9px}
+  .kill{background:#c4562e1a; outline:1px dashed #c4562e66; border-radius:4px; padding:0 3px}
+  .flag{color:var(--bad); font-weight:600}
+
+  ul.why{margin:0; padding-left:1.1em; font-size:13px; color:var(--ink2); max-width:68ch}
+  ul.why li{margin-bottom:8px}
+  ul.why b{color:var(--ink); font-weight:600}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.9em;
+       background:var(--track); padding:1px 4px; border-radius:4px}
+</style>
+
+<div class="page">
+
+  <h1>“오늘” 블록 시안 <span style="color:var(--ink3);font-weight:400">v2</span></h1>
+  <p class="sub">
+    v1 의 문제: <b style="color:var(--ink)">오늘</b>과 <b style="color:var(--ink)">지갑</b>이 똑같이 생겼다 —
+    둘 다 토큰, 둘 다 큰 숫자, 둘 다 막대. 심지어 막대의 뜻이 서로 다른데(위는 <code>오늘÷평소</code>,
+    아래는 <code>지갑÷하루치</code>) 모양이 같았다. <b style="color:var(--ink)">막대를 “오늘”에만 남긴다.</b>
+  </p>
+
+  <div class="row">
+
+    <!-- 지금 -->
+    <div class="col">
+      <div class="cap"><span class="dot old"></span>지금</div>
+      <div class="pop">
+        <div class="lab">오늘 자란 만큼</div>
+        <div class="flex" style="margin-top:2px">
+          <div class="big">15,548 <span class="unit">mL</span></div>
+          <div class="r mono" style="font-size:10px;color:var(--ink2)">
+            원시 127.4M<br><span class="kill">가중 ÷8193.5</span>
+          </div>
+        </div>
+        <div class="flex" style="margin-top:11px">
+          <span class="lab">지갑</span><span class="lab">하루 154.5M</span>
+          <span class="r mono" style="font-size:11px;font-weight:600;color:var(--accent)">95.3M</span>
+        </div>
+        <div class="bar"><i style="width:62%"></i></div>
+        <div style="font-size:10px;color:var(--orange);margin-top:7px">지금 물 살 수 있어요 · 5시간치</div>
+        <div class="kill" style="font-size:10px;color:var(--ink3);margin-top:5px">
+          Claude 한도 조회가 제한됐어요 · Codex 한도를 못 읽었어요
+        </div>
+        <div style="font-size:10px;color:var(--green);margin-top:6px">연속 2일 · 물 +4%</div>
+      </div>
+      <p class="note">
+        mL 이 바로 위 게이지와 겹치고, <code>÷8193.5</code> 는 개발자 진단값,
+        한도 실패는 본문 크기로 두 줄.
+      </p>
+    </div>
+
+    <!-- v2 · 평소보다 적은 날 -->
+    <div class="col">
+      <div class="cap"><span class="dot new"></span>v2 — 평소보다 적은 날</div>
+      <div class="pop">
+        <div class="lab">오늘 쓴 토큰</div>
+        <div class="flex" style="margin-top:2px">
+          <div class="big">127.4<span class="unit">M</span></div>
+          <div class="r" style="font-size:10px;color:var(--ink2)">물 <span class="mono">+15,548</span> mL</div>
+        </div>
+        <div class="bar"><i style="width:57%"></i><u style="left:70%"></u></div>
+        <div class="barcap"><span>평소의 <b>82%</b></span><span class="mono">평소 154.5M</span></div>
+
+        <div class="sep"></div>
+
+        <div class="flex">
+          <span class="lab">지갑</span>
+          <span class="r mid mono">95.3<span class="unit">M</span></span>
+        </div>
+        <div style="font-size:10px;color:var(--orange);margin-top:5px">지금 물 살 수 있어요 · 5시간치</div>
+        <div style="font-size:10px;color:var(--ink3);margin-top:3px">벤치까지 59.2M 더 · 9시간치</div>
+
+        <div style="font-size:10px;color:var(--green);margin-top:10px">연속 2일 · 물 +4%</div>
+        <div class="warnline">⚠︎ 한도 조회 안 됨</div>
+      </div>
+      <p class="note">
+        <b>막대는 하나뿐.</b> 흐름(오늘)에만 붙고, 잔액(지갑)은 숫자 하나 + 살 수 있는 것.
+        크기도 갈라서 <b>위는 흐름 · 아래는 잔액</b>이 한눈에 구분된다.
+      </p>
+    </div>
+
+    <!-- v2 · 몰아친 날 -->
+    <div class="col">
+      <div class="cap"><span class="dot new"></span>v2 — 몰아친 날</div>
+      <div class="pop">
+        <div class="lab">오늘 쓴 토큰</div>
+        <div class="flex" style="margin-top:2px">
+          <div class="big">241.6<span class="unit">M</span></div>
+          <div class="r" style="font-size:10px;color:var(--ink2)">물 <span class="mono">+29,480</span> mL</div>
+        </div>
+        <div class="bar g"><i style="width:100%"></i><u style="left:70%"></u></div>
+        <div class="barcap"><span class="pill">평소의 1.6배</span><span class="mono">평소 154.5M</span></div>
+
+        <div class="sep"></div>
+
+        <div class="flex">
+          <span class="lab">지갑</span>
+          <span class="r mid mono">336.9<span class="unit">M</span></span>
+        </div>
+        <div style="font-size:10px;color:var(--orange);margin-top:5px">지금 영양제 살 수 있어요 · 2.2일치</div>
+        <div style="font-size:10px;color:var(--ink3);margin-top:3px">전설 씨앗까지 1.67B 더 · 11일치</div>
+
+        <div style="font-size:10px;color:var(--green);margin-top:10px">연속 3일 · 물 +6%</div>
+      </div>
+      <p class="note">
+        넘치면 막대가 꽉 차고 <b>배수</b>로 바뀐다. 100% 눈금이 남아 있어 얼마나 넘겼는지가 보인다.
+      </p>
+    </div>
+
+    <!-- v2 · 설치 직후 -->
+    <div class="col">
+      <div class="cap"><span class="dot new"></span>v2 — 설치 직후</div>
+      <div class="pop">
+        <div class="lab">오늘 쓴 토큰</div>
+        <div class="flex" style="margin-top:2px">
+          <div class="big">43.1<span class="unit">M</span></div>
+          <div class="r" style="font-size:10px;color:var(--ink2)">물 <span class="mono">+5,260</span> mL</div>
+        </div>
+        <div class="bar"><i style="width:0%"></i></div>
+        <div class="barcap">
+          <span style="color:var(--ink3)">평소를 재는 중 · 2일째</span>
+          <span class="mono" style="color:var(--ink3)">3일부터</span>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="flex">
+          <span class="lab">지갑</span>
+          <span class="r mid mono">43.1<span class="unit">M</span></span>
+        </div>
+        <div style="font-size:10px;color:var(--ink3);margin-top:5px">가격은 아직 어림값이에요</div>
+
+        <div style="font-size:10px;color:var(--green);margin-top:10px">연속 2일 · 물 +4%</div>
+      </div>
+      <p class="note">
+        표본 3일 미만이면 <b>퍼센트를 아예 안 쓴다.</b> 틀린 82%는 아무 숫자도 안 쓴 것보다 나쁘다.
+        <b>설치할 때 로그 14일치를 거슬러 읽으면</b> 이 상태가 거의 안 나온다.
+      </p>
+    </div>
+
+    <!-- v2-b · 지갑을 아예 뺀 안 -->
+    <div class="col">
+      <div class="cap"><span class="dot alt"></span>대안 — 지갑을 가방 탭으로</div>
+      <div class="pop">
+        <div class="lab">오늘 쓴 토큰</div>
+        <div class="flex" style="margin-top:2px">
+          <div class="big">127.4<span class="unit">M</span></div>
+          <div class="r" style="font-size:10px;color:var(--ink2)">물 <span class="mono">+15,548</span> mL</div>
+        </div>
+        <div class="bar"><i style="width:57%"></i><u style="left:70%"></u></div>
+        <div class="barcap"><span>평소의 <b>82%</b></span><span class="mono">평소 154.5M</span></div>
+
+        <div style="font-size:10px;color:var(--orange);margin-top:11px">
+          지갑 95.3M · 지금 물 살 수 있어요
+        </div>
+        <div style="font-size:10px;color:var(--green);margin-top:8px">연속 2일 · 물 +4%</div>
+        <div class="warnline">⚠︎ 한도 조회 안 됨</div>
+      </div>
+      <p class="note">
+        지갑을 <b>한 줄</b>로 줄이고 자세한 건 가방 탭에 맡긴다.
+        가방엔 이미 <code>95.3M 토큰 · 사도 자란 건 안 줄어요</code> 와
+        <code>하루 평균 154.5M (최근 14일)</code> 이 있다. 홈은 더 조용해진다.
+      </p>
+    </div>
+
+  </div>
+
+  <h2>바뀌는 것</h2>
+  <ul class="why">
+    <li><b>막대를 하나만.</b> 흐름에만 붙인다. 잔액에 막대를 붙이면 뜻이 다른 두 막대가 똑같이 생긴다 — v1 의 실수.</li>
+    <li><b>단위.</b> 큰 숫자를 mL → <b>토큰</b>. 게이지가 이미 mL 을 맡고 있고, “내가 얼마나 했나”는 토큰이 맞는 단위다.</li>
+    <li><b>기준.</b> <code>평소</code> = 최근 14일 평균에서 <b>오늘을 뺀</b> 값. 지금은 오늘이 평균에 섞여 자기 자신과 비교한다.</li>
+    <li><b>정직.</b> 표본 3일 미만이면 퍼센트 대신 “재는 중”. 설치할 때 로그 14일치를 거슬러 읽어 이 구간을 없앤다.</li>
+    <li><b>덜어내기.</b> <code>가중 ÷8193.5</code> 삭제, 한도 실패는 회색 한 줄.</li>
+  </ul>
+
+  <h2 style="color:var(--bad)">그리는 중에 하나 더 나왔다</h2>
+  <p style="font-size:13px;color:var(--ink2);max-width:68ch;margin:0">
+    “다음 목표”가 <b class="flag">벤치까지 59.2M</b> 로 나온다. 지금 코드가 <b>못 사는 것 중 제일 싼 것</b>을
+    고르는데, 그게 하필 <b>장식</b>이다. 성장에 아무 도움이 안 되는 걸 목표로 걸어주는 셈이라,
+    <b>성장에 쓰는 품목</b>(물·거름·영양제·씨앗)을 먼저 고르게 바꾸는 게 맞다.
+  </p>
+
+</div>

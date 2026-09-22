@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>상점 오른쪽 칸</title>
+<style>
+  :root {
+    --bg: #eef2f4;
+    --panel: #f7fafb;
+    --ink: #1c2529;
+    --dim: #5d6b73;
+    --faint: #93a2aa;
+    --line: #d9e2e6;
+    --blue: #1668c4;
+    --orange: #c2600e;
+    --green: #157a4b;
+    --bad: #b03030;
+    --badbg: #fbeaea;
+    --goodbg: #e9f4ee;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12171a;
+      --panel: #1b2226;
+      --ink: #e6eef2;
+      --dim: #9db0ba;
+      --faint: #6a7d87;
+      --line: #2b353b;
+      --blue: #6cb6f5;
+      --orange: #f0a04a;
+      --green: #63c894;
+      --bad: #e38080;
+      --badbg: #2c1d1d;
+      --goodbg: #17281f;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12171a; --panel: #1b2226; --ink: #e6eef2; --dim: #9db0ba;
+    --faint: #6a7d87; --line: #2b353b; --blue: #6cb6f5; --orange: #f0a04a;
+    --green: #63c894; --bad: #e38080; --badbg: #2c1d1d; --goodbg: #17281f;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Apple SD Gothic Neo", sans-serif;
+    padding-block: 32px;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--dim); font-size: 13px; margin: 0 0 28px; }
+
+  .cols { display: flex; flex-wrap: wrap; gap: 18px; }
+  .col { flex: 1 1 340px; min-width: 0; }
+
+  .tag {
+    display: inline-block; font-size: 11px; font-weight: 600;
+    padding: 3px 9px; border-radius: 99px; margin-bottom: 8px;
+    letter-spacing: 0.02em;
+  }
+  .tag.before { background: var(--badbg); color: var(--bad); }
+  .tag.after  { background: var(--goodbg); color: var(--green); }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 4px 14px;
+  }
+  .row {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 11px 0; border-bottom: 1px solid var(--line);
+  }
+  .row:last-child { border-bottom: 0; }
+  .glyph { font-size: 17px; line-height: 1.25; width: 22px; flex: none; text-align: center; }
+  .name { font-size: 13px; font-weight: 600; }
+  .desc { font-size: 11px; color: var(--dim); margin-top: 1px; }
+  .mid { min-width: 0; flex: 1; }
+  .right { flex: none; text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* 전 — 숫자 넷 */
+  .b1 { font: 600 13px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--blue); }
+  .b2 { font: 11px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--faint); }
+  .b3 { font: 600 11px/1.35 inherit; color: var(--orange); }
+  .b4 { font: 10px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--faint); }
+
+  /* 후 — 답 크게, 값 작게 */
+  .a1 { font: 700 14px/1.3 inherit; color: var(--orange); }
+  .a2 { font: 10px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--faint); }
+  .price { font: 600 13px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--blue); }
+  .dim   { font: 600 13px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--dim); }
+  .btn {
+    display: inline-block; margin-top: 4px; font-size: 11px; font-weight: 600;
+    color: #fff; background: var(--blue); border-radius: 6px; padding: 3px 11px;
+  }
+
+  .note {
+    margin-top: 22px; font-size: 12.5px; color: var(--dim);
+    border-left: 3px solid var(--line); padding-left: 12px;
+  }
+  .note b { color: var(--ink); }
+  .note p { margin: 0 0 8px; }
+  .note p:last-child { margin-bottom: 0; }
+
+  /* 장식 뽑기 */
+  .gacha { margin-top: 28px; }
+  .gbox { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .gtop { display: flex; align-items: flex-start; gap: 10px; }
+  .reveal {
+    display: flex; align-items: center; gap: 9px; margin: 9px 0 8px;
+    background: color-mix(in srgb, var(--orange) 12%, transparent);
+    border-radius: 8px; padding: 7px 9px;
+  }
+  .reveal img { image-rendering: pixelated; width: 40px; height: 40px; }
+  .rname { font-size: 14px; font-weight: 700; color: var(--orange); }
+  .rsub { font-size: 11px; color: var(--dim); }
+  .strip { display: flex; align-items: center; gap: 8px; }
+  .strip img { image-rendering: pixelated; height: 26px; }
+  .count { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--faint); margin-left: auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>상점 오른쪽 칸</h1>
+  <p class="sub">하루 평균 249.7M · 지갑 136.7M 기준</p>
+
+  <div class="cols">
+    <div class="col">
+      <span class="tag before">지금 — 숫자 넷</span>
+      <div class="panel">
+        <div class="row">
+          <div class="glyph">💧</div>
+          <div class="mid"><div class="name">물</div><div class="desc">바로 +7,181 mL</div></div>
+          <div class="right">
+            <div class="b1">49.9M</div>
+            <div class="b2">0.2일치</div>
+            <div class="btn">구매</div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="glyph">🪑</div>
+          <div class="mid"><div class="name">벤치</div><div class="desc">정원에 놓아요 (효과 없음)</div></div>
+          <div class="right">
+            <div class="b1">249.7M</div>
+            <div class="b2">1.0일치</div>
+            <div class="b3">오늘 안에</div>
+            <div class="b4">113.0M 부족</div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="glyph">🎁</div>
+          <div class="mid"><div class="name">장식 뽑기</div><div class="desc">아직 없는 장식 하나 · 9종 남음</div></div>
+          <div class="right">
+            <div class="b1">249.7M</div>
+            <div class="b2">1.0일치</div>
+            <div class="b3">오늘 안에</div>
+            <div class="b4">113.0M 부족</div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="glyph">🐦</div>
+          <div class="mid"><div class="name">새 모이통</div><div class="desc">정원에 놓아요 (효과 없음)</div></div>
+          <div class="right">
+            <div class="b1">499.5M</div>
+            <div class="b2">2.0일치</div>
+            <div class="b3">내일이면</div>
+            <div class="b4">362.8M 부족</div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="glyph">🏮</div>
+          <div class="mid"><div class="name">석등</div><div class="desc">정원에 놓아요 (효과 없음)</div></div>
+          <div class="right">
+            <div class="b1">749.2M</div>
+            <div class="b2">3.0일치</div>
+            <div class="b3">2일 더</div>
+            <div class="b4">612.5M 부족</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <span class="tag after">고침 — 값표 하나</span>
+      <div class="panel">
+        <div class="row">
+          <div class="glyph">💧</div>
+          <div class="mid"><div class="name">물</div><div class="desc">바로 +7,181 mL</div></div>
+          <div class="right">
+            <div class="price">49.9M</div>
+            <div class="a2">0.2일치</div>
+            <div class="btn">구매</div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="glyph">🪑</div>
+          <div class="mid"><div class="name">벤치</div><div class="desc">정원에 놓아요 (효과 없음)</div></div>
+          <div class="right">
+            <div class="dim">249.7M</div>
+            <div class="a2">1.0일치</div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="glyph">🎁</div>
+          <div class="mid"><div class="name">장식 뽑기</div><div class="desc">아직 없는 장식 하나 · 9종 남음</div></div>
+          <div class="right">
+            <div class="a1">11시간 더 쓰면</div>
+            <div class="a2">249.7M · 1.0일치</div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="glyph">🐦</div>
+          <div class="mid"><div class="name">새 모이통</div><div class="desc">정원에 놓아요 (효과 없음)</div></div>
+          <div class="right">
+            <div class="dim">499.5M</div>
+            <div class="a2">2.0일치</div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="glyph">🏮</div>
+          <div class="mid"><div class="name">석등</div><div class="desc">정원에 놓아요 (효과 없음)</div></div>
+          <div class="right">
+            <div class="dim">749.2M</div>
+            <div class="a2">3.0일치</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <p><b>상점은 값을 보여주는 곳입니다.</b> 모든 줄이 <code>값 / 며칠치</code> 두 줄로 같고,
+       바뀌는 건 색과 버튼뿐입니다 — 파랑 + 「구매」면 지금 살 수 있고, 회색이면 아직입니다.
+       줄마다 생김새가 같아야 열 품목을 훑을 수 있습니다.</p>
+    <p><b>뺀 것들은 값이 아니라 제 해석이었습니다.</b> <code>113.0M 부족</code>은
+       값 − 지갑이라 새 정보가 아니고, <code>2일 더 쓰면</code>은 14일 평균으로 만든
+       <b>예측</b>입니다. 예측을 제일 큰 글씨로 두면 앱이 못 지킬 약속을 계속 하는 셈이에요.
+       "언제 살 수 있나"는 값에 마우스를 올리면 나옵니다.</p>
+    <p><b>큰 숫자가 안 읽히는 문제는 그대로 풀립니다.</b> 머리말에 지갑(136.7M)과
+       하루 평균(249.7M)이 이미 있고, 값이 <b>지갑과 같은 단위</b>라 바로 견줄 수 있습니다.
+       거기에 "3.0일치"가 붙어서 크기가 시간으로도 읽힙니다.</p>
+  </div>
+
+  <div class="gacha">
+    <h1 style="font-size:17px;margin:0 0 4px">장식 뽑기</h1>
+    <p class="sub" style="margin-bottom:12px">상점에서 「뽑기」 한 번 = 사고 여는 것까지. 가방에 안 들릅니다.</p>
+    <div class="gbox">
+      <div class="gtop">
+        <div class="glyph">🎁</div>
+        <div class="mid">
+          <div class="name">장식 뽑기</div>
+          <div class="desc">누르면 아직 없는 장식 하나가 바로 나와요 (중복 없음)</div>
+        </div>
+        <div class="right">
+          <div class="price">249.7M</div>
+          <div class="a2">1.0일치</div>
+          <div class="btn">뽑기</div>
+        </div>
+      </div>
+      <div class="reveal">
+        <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAABJUlEQVR4nO2aQQ7CMAwEA+INSNy487L+Ir/gZdy5IfGJcq6RGllOOlDv3BBJu1rZS4lbihBCCCGycvBuuF3P89r3j+fbfU3yfsfI5j0gA2gBNKfWAtuD93pZXT/Vsljv7dGt75e+AmQALYCmmQFebM/aHvXuH036CpABtACa7hlg2bqnvaSvABlAC6AJZ8BUX4vPvXt+9PXTV4AMoAXQhDPA25Penh79HJG+AmQALYAmPBfY+lnfZojmAkFkAC2AJjzHG50JvXvekr4CZAAtgGb4mSCNzSibIekrQAbQAmh2lwGt5xI7q0xfATKAFkDzdxnQem/wu+fX/0ukrwAZQAug+fkMiM4dWucH6StABtACaLqer5XS/p3ujeYCQWQALUAIIUg+jTxOl7nrXP8AAAAASUVORK5CYII=" alt="고양이">
+        <div><div class="rname">고양이</div><div class="rsub">정원에 놓았어요</div></div>
+      </div>
+      <div class="strip">
+        <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUQAAAAgCAYAAABq+AE+AAADJ0lEQVR4nO3dsWoVQRiG4S/iNRiwSkoxhYLapRMFFbRRxMpWSILExkuwMYUJ2Kay0MZCLcTOMoIWSsDGVILiPcTC+YM7OZOZ7Mzsnt3zPk04u5mdydmF/fhndjMnVHF24dS+JH3b+z3X91iAVPcePLqV0/7F86evy4ykHyf6HgAATIvRpJeuE5n1Z/x+Q+OJtQP6kJsMfUNNiiREAHAGn04scb09d0aSdP3LrqR6ycv6+/rjV2P70uJ8o18/Iaa2y9X2Tj/UOzrylE6GvrbXlT+u1OO0bWdIiADgnAzt8GtducZeK7Pkt7Q43/jeQsmwtNw7vbUnKfYj9fx1fX5i/ZVOmKHjxa7Ptu18JEQAcA4lREs0G1vPJEnv9s9ndXBt7rMkaX1lregssF87NAe1RKnKrLMdz5Kgn/z+S4qatN+Urh1islBCqL09dVzHlVsjG7raNU8SIgA4wRqi7/7Ff4lme+foWljq7w2dnxRDLAmG2qMbsRpT7vbcceQeb9aSYi0kRABwognRaoDbO2m1REuG1q60UO3QV7uWGJs9TqghzuSzzrGERNJBn0iIAOAcSoiWWGxW2Gab2ya+9ZW1xnFLsSdSupaaDP3PR8xGz0RSTK2dURNDn0iIAOAEa4iWWK7euCvp8PrEkFqJ0Pd+/Xbj8+nVLUnSz82VxvYrG69qDuNA7Fnm0LrFUo67gp8Ehmlk12Wp2XieZQaAlpLXIYZqi6arZOizZOh/9pNiKaH1h7G/u227sUi98489uYaedMk9ztjkJsW23w8JEQCc5IQ4bQ5qg+6n/wxxbW2T3VgTYWrya/teu9Dxhi41MY7l7+1bbBUDCREAnOSEGJtltu2l32rj93958+PE/Q/ffNdR+7W63Ml6Pxvn4zsXbNO+JD15+Uld9N+10usLWa+IGvzrKnT9kBABwIkmxNT1h6Z2UkSaWNKatYRV+32IuThfZbWtQZMQAcBJriHaOsO+fVhd7nsIE1mSvnlpQZK0u/ensd+2q9Lbd/pSen0h6xW7lfs9Du08xMZLQgQAZxQpZRoc978UjiUhAl3o6okVEiIAAAAAABP9Ba928ouFX91uAAAAAElFTkSuQmCC" alt="모은 장식">
+        <span class="count">3 / 9</span>
+      </div>
+    </div>
+    <div class="note" style="margin-top:14px">
+      <p><b>누르는 순간 결과가 나옵니다.</b> 예전엔 상점에서 사고 → 가방 탭으로 옮겨서 →
+         「사용」을 눌러야 회색 글씨 한 줄이 떴습니다. 뽑기라기보다 영수증이었어요.</p>
+      <p><b>아직 안 나온 건 실루엣으로 깔아둡니다.</b> 빈칸이면 몇 개가 남았는지도,
+         뭐가 있는지도 안 보입니다. 검게 깔아두면 "저건 뭐지"가 남아요.</p>
+      <p><b>중복은 안 나옵니다.</b> 아직 없는 것 중에서만 뽑고, 다 모으면 버튼이
+         "다 모았어요"로 바뀌어 지갑이 새지 않습니다.</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>
