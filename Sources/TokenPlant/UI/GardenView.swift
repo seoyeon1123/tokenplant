@@ -93,35 +93,6 @@ enum GardenComposer {
             for k in 0..<4 { put(cx - 6 + k * 2, cy - 2, "#dff0f8") }
         }
 
-        // 장식 — **모든 티어에** 그린다. 앞쪽 바닥에 두므로 그루와 겹치지 않는다.
-        //
-        // 예전엔 뒷마당(6그루)부터만 그렸다. 장식이 셋뿐이고 전부 직접 사는 것이었을 때는
-        // 그래도 됐는데, 뽑기가 생기면서 깨졌다: 이틀째에 뽑아서 "정원에 놓았어요"라고
-        // 띄우는데 실제로 보이는 건 6그루를 채운 **석 달 뒤**다. 약속을 깨는 셈이다.
-        // (정원 창은 3그루부터지만 도감 탭의 미니뷰는 처음부터 보인다 — 거기서 바로 보인다.)
-        // 그루와 같은 규칙으로 **최근 것부터** 놓는다. 앞에서 자르면 창가(자리 3개)에서
-        // 넷째로 뽑은 장식이 안 보이는데 화면은 "정원에 놓았어요" 라고 말한다.
-        // 열두 개를 다 모을 수 있는데 초반 티어의 자리는 3~5개뿐이라 늘 걸리는 구간이다.
-        for (key, spot) in layout.decorPlacements(decorations, positions: positions) {
-            guard key != hiding, let art = DecorIcons.grid(key, frame: frame) else { continue }
-            for (gy, row) in art.enumerated() {
-                for (gx, ch) in row.enumerated() where ch != "." {
-                    put(spot.x + gx, spot.y + gy - DecorIcons.size, IconPalette.color(ch))
-                }
-            }
-        }
-
-        // 새 — 장식 **다음에** 그린다. 같은 칸에 나중에 그려야 모이통 앞에 선 것으로 읽힌다.
-        if let bird {
-            for (gy, row) in BirdIcon.grid(frame: bird.art).enumerated() {
-                for (gx, ch) in row.enumerated() where ch != "." {
-                    // 왼쪽으로 갈 땐 칸 번호를 뒤집는다 — 안 뒤집으면 뒷걸음질로 날아온다.
-                    let col = bird.facingLeft ? BirdIcon.size - 1 - gx : gx
-                    put(bird.x + col, bird.y + gy - BirdIcon.size, IconPalette.color(ch))
-                }
-            }
-        }
-
         // 창가·베란다에는 지금 키우는 화분이 함께 놓인다 — 빈 씬을 보여주지 않는다.
         if let stage = currentPotStage, let sp = currentSpecies,
            layout.key == "sill" || layout.key == "balc" {
@@ -152,7 +123,9 @@ enum GardenComposer {
             if season.extraHaze > 0 { haze = season.extraHaze + haze * 0.6 }
 
             for x in row.xs {
-                guard idx < shown.count else { return grid }
+                // 예전엔 여기서 `return grid` 했다. 장식이 **뒤로** 오면서
+                // 그루가 자리보다 적은 정원(대부분의 정원이다)에서 장식이 통째로 안 그려진다.
+                guard idx < shown.count else { break }
                 let e = shown[idx]
                 idx += 1
                 let art = GardenSprites.grid(e.species.shape, motif: e.species.motif)
@@ -163,6 +136,41 @@ enum GardenComposer {
                         put(x + gx, row.baseline + gy - GardenSprites.size,
                             haze > 0 ? PlantSpriteBuilder.blend(hex, season.sky, haze) : hex)
                     }
+                }
+            }
+        }
+
+        // 장식 — **모든 티어에**, 그리고 **그루보다 나중에** 그린다.
+        //
+        // 장식은 앞쪽 바닥(`height - 2`)에 서고 앞줄 그루의 기준선은 그보다 위다.
+        // 즉 장식이 더 앞에 있다. 그런데 한동안 그루보다 먼저 그려서 앞줄 나무가
+        // 고양이를 덮었다 — 앞에 있는 것이 뒤에 가리니 깊이가 뒤집혀 보인다.
+        // (그때 주석에는 "겹쳐 보여서 자연스럽다"고 적혀 있었는데, 자연스러운 건
+        //  가까운 것이 가리는 쪽이다.)
+        //
+        // 예전엔 뒷마당(6그루)부터만 그렸다. 장식이 셋뿐이고 전부 직접 사는 것이었을 때는
+        // 그래도 됐는데, 뽑기가 생기면서 깨졌다: 이틀째에 뽑아서 "정원에 놓았어요"라고
+        // 띄우는데 실제로 보이는 건 6그루를 채운 **석 달 뒤**다. 약속을 깨는 셈이다.
+        // (정원 창은 3그루부터지만 도감 탭의 미니뷰는 처음부터 보인다 — 거기서 바로 보인다.)
+        // 그루와 같은 규칙으로 **최근 것부터** 놓는다. 앞에서 자르면 창가(자리 3개)에서
+        // 넷째로 뽑은 장식이 안 보이는데 화면은 "정원에 놓았어요" 라고 말한다.
+        // 열두 개를 다 모을 수 있는데 초반 티어의 자리는 3~5개뿐이라 늘 걸리는 구간이다.
+        for (key, spot) in layout.decorPlacements(decorations, positions: positions) {
+            guard key != hiding, let art = DecorIcons.grid(key, frame: frame) else { continue }
+            for (gy, row) in art.enumerated() {
+                for (gx, ch) in row.enumerated() where ch != "." {
+                    put(spot.x + gx, spot.y + gy - DecorIcons.size, IconPalette.color(ch))
+                }
+            }
+        }
+
+        // 새 — 장식 **다음에** 그린다. 같은 칸에 나중에 그려야 모이통 앞에 선 것으로 읽힌다.
+        if let bird {
+            for (gy, row) in BirdIcon.grid(frame: bird.art).enumerated() {
+                for (gx, ch) in row.enumerated() where ch != "." {
+                    // 왼쪽으로 갈 땐 칸 번호를 뒤집는다 — 안 뒤집으면 뒷걸음질로 날아온다.
+                    let col = bird.facingLeft ? BirdIcon.size - 1 - gx : gx
+                    put(bird.x + col, bird.y + gy - BirdIcon.size, IconPalette.color(ch))
                 }
             }
         }

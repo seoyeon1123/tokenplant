@@ -542,6 +542,56 @@ final class GardenSceneTests: XCTestCase {
         }
     }
 
+    /// **장식이 그루보다 앞에 있다.** 장식은 앞쪽 바닥에 서고 앞줄 그루의 기준선은
+    /// 그보다 위다. 한동안 그루를 나중에 그려서 앞줄 나무가 고양이를 덮었다.
+    func testDecorationsDrawInFrontOfTrees() {
+        let layout = SceneLayout.byKey("yard")
+        // 앞줄 그루 자리(24)와 겹치는 자리에 장식을 놓는다.
+        let spot = [21, layout.height - 2]
+        let full = (0..<layout.slotCount).map { i in
+            GardenEntry(speciesID: PlantSpecies.catalog[i % PlantSpecies.catalog.count].id,
+                        plantedAt: Date(timeIntervalSince1970: 0),
+                        totalWater: 1_000)
+        }
+        func grid(_ decor: [String]) -> [[String?]] {
+            GardenComposer.compose(layout: layout, season: SeasonPalette.byKey("spring"),
+                                   entries: full, decorations: decor,
+                                   currentPotStage: nil, currentSpecies: nil,
+                                   positions: decor.isEmpty ? [:] : ["cat": spot])
+        }
+        let bare = grid([])
+        let withCat = grid(["cat"])
+        XCTAssertNotEqual(bare, withCat, "장식을 놓았는데 격자가 그대로다")
+
+        // 고양이 픽셀이 **거의 다** 살아 있어야 한다. 나무가 나중에 그려지면 윗부분이 먹힌다.
+        guard let art = DecorIcons.grid("cat") else { return XCTFail("고양이 아트가 없다") }
+        var kept = 0, total = 0
+        for (gy, row) in art.enumerated() {
+            for (gx, ch) in row.enumerated() where ch != "." {
+                let x = spot[0] + gx, y = spot[1] + gy - DecorIcons.size
+                guard y >= 0, y < layout.height, x >= 0, x < layout.width else { continue }
+                total += 1
+                if withCat[y][x] == IconPalette.color(ch) { kept += 1 }
+            }
+        }
+        XCTAssertEqual(kept, total, "고양이 \(total - kept)칸이 나무에 덮였다 — 깊이가 뒤집혔다")
+    }
+
+    /// 그루가 자리보다 적어도 장식은 그려져야 한다. 그루 루프가 중간에 `return` 하면
+    /// **대부분의 정원에서** 장식이 통째로 사라진다.
+    func testDecorationsSurviveAHalfEmptyGarden() {
+        let layout = SceneLayout.byKey("forest")
+        let one = [GardenEntry(speciesID: PlantSpecies.catalog[0].id,
+                               plantedAt: Date(timeIntervalSince1970: 0), totalWater: 1_000)]
+        func grid(_ decor: [String]) -> [[String?]] {
+            GardenComposer.compose(layout: layout, season: SeasonPalette.byKey("spring"),
+                                   entries: one, decorations: decor,
+                                   currentPotStage: nil, currentSpecies: nil)
+        }
+        XCTAssertNotEqual(grid([]), grid(["mushroom"]),
+                          "그루 한 개짜리 정원에서 장식이 안 그려진다")
+    }
+
     // ── 날아와 앉기 ──────────────────────────────────────────────
     //
     // "모이통을 옮기면 새가 순간이동한다"가 원래 모습이었다. 자리를 바꾼 순간부터

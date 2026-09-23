@@ -6,7 +6,12 @@ AI 코딩 토큰 사용량으로 식물을 키우는 macOS 메뉴바 앱.
 그리고 같은 토큰이 지갑에도 쌓여서, 거기서 물·거름·영양제를 사면 **더 빨리** 자란다.
 거목이 되면 정원으로 이식되고 화분에는 새 씨앗이 심긴다.
 
+정원에 놓은 것들은 **움직인다.** 바람개비가 돌고, 고양이가 꼬리를 흔들고,
+모이통이나 물받이를 놓으면 새가 날아와서 앉는다.
+
 <p align="center">
+  <img src="Resources/garden.gif" width="640" alt="움직이는 정원 — 새가 날아와 모이통 앞에 앉는다">
+  <br>
   <img src="Resources/preview-garden.png" width="640" alt="정원 티어별 배경">
   <br>
   <img src="Resources/preview-species.png" width="640" alt="종 × 성장 단계">
@@ -17,7 +22,7 @@ AI 코딩 토큰 사용량으로 식물을 키우는 macOS 메뉴바 앱.
 ### Homebrew (권장)
 
 ```bash
-brew install --cask YOUR-GITHUB-ID/tap/tokenplant
+brew install --cask seoyeon1123/tap/tokenplant
 ```
 
 메뉴바 오른쪽에 화분이 뜨면 끝이다. 톱니 메뉴에서 **로그인 시 자동 실행**을 켜두면
@@ -31,7 +36,7 @@ brew upgrade --cask tokenplant
 
 ### 직접 다운로드
 
-[Releases](https://github.com/YOUR-GITHUB-ID/tokenplant/releases/latest) 에서
+[Releases](https://github.com/seoyeon1123/tokenplant/releases/latest) 에서
 `TokenPlant.zip` 을 받아 압축을 풀고 `TokenPlant.app` 을 `/Applications` 로 끌어다 놓는다.
 
 이 앱은 Apple 공증(notarization)을 받지 않았다. 그래서 첫 실행에 Gatekeeper 경고가 뜬다.
@@ -49,7 +54,7 @@ Homebrew 로 깔면 이 과정이 자동으로 처리돼서 경고를 볼 일이
 ### 소스에서 빌드
 
 ```bash
-git clone https://github.com/YOUR-GITHUB-ID/tokenplant.git
+git clone https://github.com/seoyeon1123/tokenplant.git
 cd tokenplant
 ./build-app.sh --install
 ```
