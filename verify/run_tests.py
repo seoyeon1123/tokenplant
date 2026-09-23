@@ -274,6 +274,53 @@ eq(_poured, DAILY_WATER_USES, N, "상한이 아니라 지갑이 먼저 떨어졌
 check(_busy.raw_wallet / _purse > 0.5, N, "상한까지 부었는데 지갑이 절반도 안 남았다")
 
 
+# ══════════ 연속 사용 선물 ══════════
+#
+# 방아쇠가 **연속 사용일**이다. 달력(설치 후 N일)으로 하면 앱만 켜두고 받을 수 있어서
+# "시간이 아니라 토큰을 써야 는다"는 규칙에 구멍이 생긴다.
+
+N = "testStreakGiftArrivesAtTheMilestone"
+s = fresh()
+for i in range(3):
+    credit(s, 1000, 10, f"2026-09-0{i+1}")
+eq(s.streak, 3, N)
+eq(s.inv.get("decorBox", 0), 1, N, "3일째에 뽑기권이 안 들어왔다")
+check(any(e[0] == "streakGift" for e in s.events), N, "선물 이벤트가 안 쌓였다")
+
+N = "testStreakGiftIsPaidOncePerMilestone"
+# 3일 쓰고 하루 쉬기를 반복하는 게 제일 이득이면 안 된다.
+s = fresh()
+for d in ("2026-09-01", "2026-09-02", "2026-09-03"): credit(s, 1000, 10, d)
+first = s.inv.get("decorBox", 0)
+for d in ("2026-09-05", "2026-09-06", "2026-09-07"): credit(s, 1000, 10, d)
+eq(s.streak, 3, N, "끊긴 뒤 다시 3일이 안 됐다")
+eq(s.inv.get("decorBox", 0), first, N, "같은 마일스톤이 두 번 지급됐다")
+
+N = "testLaterMilestonesStillPay"
+s = fresh()
+for i in range(7):
+    credit(s, 1000, 10, f"2026-09-{i+1:02d}")
+eq(s.streak, 7, N)
+eq(s.inv.get("decorBox", 0), 2, N, "3일·7일 두 번이 안 쌓였다")
+
+N = "testStreakGiftFallsBackToSeedWhenDecorComplete"
+s = fresh(); s.decorations = list(GACHA_DECOR)
+for i in range(3): credit(s, 1000, 10, f"2026-09-0{i+1}")
+eq(s.inv.get("decorBox", 0), 0, N, "다 모았는데 뽑기권을 줬다")
+eq(s.pending_guarantee, "rare", N, "폴백 씨앗이 안 들어왔다")
+
+N = "testStreakGiftNeverDowngradesAPendingSeed"
+s = fresh(); s.decorations = list(GACHA_DECOR); s.pending_guarantee = "legendary"
+for i in range(3): credit(s, 1000, 10, f"2026-09-0{i+1}")
+eq(s.pending_guarantee, "legendary", N, "산 전설 위에 고급을 덮었다")
+
+N = "testDaysToNextGift"
+eq(days_to_next_gift(0), 3, N)
+eq(days_to_next_gift(3), 4, N)
+eq(days_to_next_gift(29), 1, N)
+eq(days_to_next_gift(30), None, N, "다 받았는데 다음이 있다")
+
+
 # ══════════ 두 물길 ══════════
 #
 # 쓴 토큰 하나가 두 곳으로 간다. 화분(가중 환산 mL)과 지갑(원시 토큰).

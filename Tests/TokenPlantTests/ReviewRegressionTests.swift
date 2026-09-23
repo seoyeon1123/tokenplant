@@ -45,6 +45,53 @@ final class ReviewRegressionTests: XCTestCase {
         XCTAssertTrue(PlantBalance.prunedDailyRaw([:], today: "2027-06-01").isEmpty)
     }
 
+    // MARK: 재조정이 빠짐을 보상하면 안 된다
+
+    /// **쉬면 이득이 되면 안 된다.**
+    ///
+    /// 목표 재조정이 갱신마다 돌던 동안, 며칠 안 쓰면 14일 평균이 내려가 목표가 줄고
+    /// "줄이는 방향만"이라 그대로 적용돼서 **진행도가 앞으로 뛰었다.**
+    /// 40일 시뮬레이션에서 20일차 진행도가 안 쉰 사람 73.0%, 사흘 쉰 사람 82.1% 였다.
+    /// 스트릭은 빠짐을 벌주는데 여기서는 빠짐이 보상이었다 — 두 규칙이 반대로 갔다.
+    func testRefitHappensOncePerPlant() {
+        var s = freshSave()
+        s.pot = PotState(speciesID: "tomato", cycleWater: 300_000)
+
+        // 3일치 이력을 쌓아 측정이 되게 한다.
+        for k in 0..<3 {
+            PlantEngine.credit(&s, raw: 30_000_000,
+                               water: 30_000_000 / PlantBalance.rawPerML, today: day(k))
+        }
+        let fitted = PlantEngine.seedCycle(s)
+        XCTAssertLessThan(fitted, 300_000, "전제가 깨졌다 — 재조정이 줄이는 방향이어야 한다")
+
+        // 한 번 맞춘다.
+        s.pot?.cycleWater = fitted
+        s.pot?.cycleFitted = true
+        let settled = s.pot?.cycleWater ?? 0
+
+        // 이 뒤로 사용량이 뚝 떨어져도(= 쉰다) 목표는 안 움직여야 한다.
+        for k in 10..<13 {
+            PlantEngine.credit(&s, raw: 1_000_000,
+                               water: 1_000_000 / PlantBalance.rawPerML, today: day(k))
+        }
+        let shrunk = PlantEngine.seedCycle(s)
+        XCTAssertLessThan(shrunk, settled, "전제가 깨졌다 — 쉬면 계산값이 더 작아야 한다")
+        XCTAssertTrue(s.pot?.cycleFitted == true, "한 번 맞춘 표시가 안 남았다")
+        XCTAssertEqual(s.pot?.cycleWater, settled, "쉬었더니 목표가 또 줄었다 — 빠짐이 이득이 된다")
+    }
+
+    /// 새로 심는 그루는 `seedCycle` 이 이미 실측으로 잡으므로 재조정 대상이 아니다.
+    func testFreshSeedIsAlreadyFitted() {
+        var s = freshSave()
+        for k in 0..<3 {
+            PlantEngine.credit(&s, raw: 30_000_000,
+                               water: 30_000_000 / PlantBalance.rawPerML, today: day(k))
+        }
+        PlantEngine.plantNewSeed(&s, roll: 12_345)
+        XCTAssertTrue(s.pot?.cycleFitted == true, "새 씨앗이 나중에 또 줄어들 수 있다")
+    }
+
     // MARK: 씨앗 목표를 한 곳에서
 
     /// 둘째 화분을 목표 없이 만들어서 `PotState.init` 기본값(400,000)이 박혔다.

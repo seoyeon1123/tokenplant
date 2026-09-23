@@ -69,6 +69,26 @@ final class AppModel {
 
     private var ticker: Task<Void, Never>?
 
+    // 한도 조회는 사용량 로그 읽기와 **주기가 달라야 한다.**
+    //
+    // 로그는 로컬 파일이라 30초마다 읽어도 공짜지만, 한도는 Anthropic usage 엔드포인트를
+    // 때리고(네트워크) codex 는 `app-server` 프로세스를 띄운다. 둘을 같은 30초에 묶어뒀더니
+    // 하루 2,880번을 보내 **429(조회 제한)** 를 받았고, 화면에는 "한도 조회가 제한됐어요"만
+    // 남았다. 5시간 창의 사용률에 30초 해상도는 아무 의미가 없다.
+    private var lastLimitsAt: Date?
+    /// 429 뒤 쉬는 시간. 성공하면 0 으로 돌아간다.
+    private var limitsBackoff: TimeInterval = 0
+    /// 평상시 주기 5분 · 제한을 받으면 10분부터 배로 늘려 최대 1시간.
+    private static let limitsInterval: TimeInterval = 300
+    private static let limitsFirstBackoff: TimeInterval = 600
+    private static let limitsMaxBackoff: TimeInterval = 3600
+
+    /// 지금 한도를 읽어도 되는가. 첫 실행은 무조건 읽는다.
+    private var shouldReadLimits: Bool {
+        guard let last = lastLimitsAt else { return true }
+        return Date().timeIntervalSince(last) >= max(Self.limitsInterval, limitsBackoff)
+    }
+
     func setLaunchAtLogin(_ on: Bool) {
         loginItemError = LoginItem.setEnabled(on)
         launchAtLogin = LoginItem.isEnabled
@@ -111,8 +131,17 @@ final class AppModel {
 
             // 한도 조회는 물 적립과 분리해 **뒤에** 돌린다. Keychain·프로세스·네트워크를 타서
             // 실패가 흔하고 느리다 — 여기에 성장을 묶으면 한도를 못 읽는 날 화분이 멈춘다.
-            let limits = await LimitsReader.read()
-            store.applyLimits(limits)
+            //
+            // 그리고 **매번 돌리지 않는다.** 건너뛴 회차는 직전 값을 그대로 쓴다 —
+            // 한도 창은 5시간·주 단위라 5분 전 값이 지금 값과 사실상 같다.
+            if shouldReadLimits {
+                lastLimitsAt = Date()
+                let limits = await LimitsReader.read()
+                store.applyLimits(limits)
+                limitsBackoff = limits.rateLimited
+                    ? min(max(Self.limitsFirstBackoff, limitsBackoff * 2), Self.limitsMaxBackoff)
+                    : 0
+            }
 
             lastRefresh = Date()
             isRefreshing = false
@@ -125,10 +154,12 @@ enum PopoverTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .home: return "홈"
+        // 이름을 한 세계로 묶는다. 예전엔 홈(웹) · 상점(게임) · 가방(RPG) · 컬렉션(외래어)로
+        // 결이 다 달랐다. `case` 이름(bag/collection)은 그대로 둔다 — 화면 글자만 바꾼다.
+        case .home: return "화분"
         case .shop: return "상점"
-        case .bag: return "가방"
-        case .collection: return "컬렉션"
+        case .bag: return "창고"
+        case .collection: return "도감"
         }
     }
 }
@@ -261,7 +292,7 @@ struct PopoverRoot: View {
     }
 }
 
-/// 홈 탭 — 화분 + 오늘 사용량 + 도구별 분해.
+/// 화분 탭 — 화분 + 오늘 사용량 + 도구별 분해.
 struct HomeTab: View {
     let model: AppModel
 
@@ -314,22 +345,7 @@ struct HomeTab: View {
             }
 
             baselineBar
-            walletLine
-
-            if store.todayRaw == 0 && store.wallet == 0 {
-                Text("오늘 아직 쓴 토큰이 없어요. Claude Code 나 Codex 를 쓰면 저절로 자랍니다.")
-                    .font(.system(size: 10)).foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if store.save.streakDays > 1 {
-                Text("연속 \(store.save.streakDays)일 · 물 +\(PlantBalance.streakBonusPercent(days: store.save.streakDays))%")
-                    .font(.system(size: 10)).foregroundStyle(.green)
-            }
-            // 한도 조회 실패는 성장에 영향이 없다. 본문 두 줄을 먹을 일이 아니라 회색 한 줄.
-            if let err = model.readError ?? store.limits.note {
-                Text(err).font(.system(size: 9)).foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            footnote
         }
     }
 
@@ -354,57 +370,64 @@ struct HomeTab: View {
         }
         .frame(height: 5)
 
-        HStack(spacing: 4) {
-            if let ratio, let base = store.baselineRate {
-                Text(ratio >= 1 ? String(format: "평소의 %.1f배", ratio)
-                                : "평소의 \(Int((ratio * 100).rounded()))%")
-                    .foregroundStyle(ratio >= 1 ? Color.green : Color.secondary)
-                Spacer()
-                Text("평소 \(TokenFormat.short(base))").foregroundStyle(.tertiary)
-            } else {
-                // 표본이 모자라면 퍼센트를 **아예 안 쓴다.** 틀린 82% 는 아무 숫자도 안 쓴 것보다 나쁘다.
-                Text("평소를 재는 중 · \(store.baselineDaysCollected)일째")
-                    .foregroundStyle(.tertiary)
-                Spacer()
-                Text("\(PlantBalance.dailyRawMinDays)일부터").foregroundStyle(.tertiary)
-            }
-        }
-        .font(.system(size: 10, design: .monospaced))
+        .help(baselineTip)
     }
 
-    /// 지갑 — **막대 없이 한 줄.** 자세한 건 가방 탭이 맡는다(거기 이미 같은 숫자가 있다).
+    /// 막대의 숫자는 **툴팁에만** 둔다.
     ///
-    /// "얼마나 찼나"보다 **"뭘 살 수 있나"** 가 실제로 알고 싶은 것이다.
-    /// 그리고 다음 목표에서 장식은 뺀다 — 벤치가 제일 싸서 늘 먼저 걸리는데,
-    /// 성장에 도움이 안 되는 걸 목표로 걸어주면 모을 이유가 안 된다.
-    @ViewBuilder
-    private var walletLine: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 5) {
-                Text("지갑").font(.system(size: 10, design: .monospaced)).foregroundStyle(.tertiary)
-                Text(TokenFormat.short(store.wallet))
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(store.wallet > 0 ? Color.blue : Color.secondary)
-                Spacer()
-            }
-
-            if let now = store.affordableNow {
-                Text("지금 \(now.name) 살 수 있어요 · \(store.dayText(store.price(now)))")
-                    .font(.system(size: 10)).foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if let goal = store.nextGoal {
-                Text("\(goal.item.name)까지 \(TokenFormat.short(goal.short)) 더 · \(store.dayText(goal.short))")
-                    .font(.system(size: 9)).foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if store.todayWindowBonus > 0 {
-                Text("한도 창 소진 보너스 +\(TokenFormat.short(store.todayWindowBonus))")
-                    .font(.system(size: 10)).foregroundStyle(.orange)
-            }
+    /// 본문에 「평소의 0%」와 「평소 255.0M」 두 줄로 있었는데 둘 다 문제였다.
+    /// 777K 는 255M 의 0.3% 인데 반올림해서 **0%** 로 찍혔다 — 토큰을 썼는데 0% 라고
+    /// 말하는 건 틀린 데다 기운 빠지는 말이다. 그리고 이 탭이 답할 질문은
+    /// "내 식물이 어떤가"이지 "내가 평소 대비 몇 %인가"가 아니다.
+    /// 막대는 눈으로 읽히니 남기고, 숫자는 궁금한 사람만 보게 한다.
+    private var baselineTip: String {
+        guard let ratio = store.todayVsBaseline, let base = store.baselineRate else {
+            return "평소를 재는 중 — \(store.baselineDaysCollected)일째 (\(PlantBalance.dailyRawMinDays)일부터 나와요)"
         }
-        .padding(.top, 3)
+        let pct = ratio >= 1 ? String(format: "%.1f배", ratio)
+                             : String(format: "%.1f%%", ratio * 100)
+        return "평소 \(TokenFormat.short(base)) 대비 오늘 \(pct)"
     }
+
+    /// 막대 아래 **한 줄뿐.** 지금 제일 할 말 하나만 고른다.
+    ///
+    /// 예전엔 여기에 지갑·구매가능·다음목표·연속일·한도오류가 줄줄이 쌓여 일곱 줄이었다.
+    /// 지갑은 푸터에 항상 떠 있어 중복이었고, 구매 관련 두 줄은 상점 탭의 일이며,
+    /// 한도 조회 실패는 사용자가 할 수 있는 게 없다(성장에도 영향이 없다).
+    @ViewBuilder
+    private var footnote: some View {
+        if store.freeDraws > 0 {
+            Text("선물 도착 · 상점에서 열어보세요")
+                .font(.system(size: 10, weight: .medium)).foregroundStyle(Color.orange)
+        } else if store.save.streakDays > 0 {
+            // 세 가지를 **한 줄에** 넣는다: 며칠째 · 지금 받는 보너스 · 다음 선물까지.
+            // 따로 두면 줄이 세 개가 되는데, 셋 다 "이어서 쓰고 있다"는 한 가지 이야기다.
+            HStack(spacing: 5) {
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 9)).foregroundStyle(Color.orange)
+                Text("\(store.save.streakDays)일째").font(.system(size: 10, weight: .medium))
+                let bonus = PlantBalance.streakBonusPercent(days: store.save.streakDays)
+                if bonus > 0 {
+                    Text("물 +\(bonus)%")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(Color.green)
+                }
+                Spacer(minLength: 4)
+                if let left = store.daysToNextGift {
+                    Text("다음 선물까지 \(left)일")
+                        .font(.system(size: 10)).foregroundStyle(.tertiary)
+                }
+            }
+            .help("토큰을 쓴 날이 이어질수록 성장에 보너스가 붙어요. 하루 빠지면 처음부터 다시 셉니다.")
+        } else if store.todayRaw == 0 {
+            Text("Claude Code 나 Codex 를 쓰면 저절로 자랍니다.")
+                .font(.system(size: 10)).foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // 지갑 줄은 여기서 뺐다. 푸터에 항상 떠 있어서(`🛍 109.8M`) 같은 숫자가 두 번 나왔고,
+    // 거기 딸려 있던 "지금 N 살 수 있어요"·"거름까지 N 더"는 상점 탭의 일이다.
 
 }
 

@@ -29,7 +29,7 @@ enum ShopItem: String, Codable, Sendable, CaseIterable {
     case nutrient         // 영양제 — 비례. 남은 거리를 당긴다
     case premiumSeed      // 고급 씨앗 (희귀 이상 확정)
     case legendarySeed    // 전설 씨앗
-    case shinyCharm       // 반짝 부적 (영구)
+    case shinyCharm       // 행운 부적 (영구) — rawValue 는 그대로 둔다(세이브 호환)
     case potSlot          // 화분 슬롯 (영구)
     /// 장식 뽑기 — 아직 없는 장식 하나가 랜덤으로 나온다. **중복이 없으니 꽝도 없다.**
     ///
@@ -49,7 +49,7 @@ enum ShopItem: String, Codable, Sendable, CaseIterable {
         case .nutrient: return "영양제"
         case .premiumSeed: return "고급 씨앗"
         case .legendarySeed: return "전설 씨앗"
-        case .shinyCharm: return "반짝 부적"
+        case .shinyCharm: return "행운 부적"
         case .potSlot: return "화분 슬롯"
         case .bench: return "벤치"
         case .feeder: return "새 모이통"
@@ -157,7 +157,7 @@ enum ShopItem: String, Codable, Sendable, CaseIterable {
 
     /// 가격 오름차순 — 뷰가 단일 목록으로 그린다.
     ///
-    /// 값이 같은 품목이 있으면(화분 슬롯·반짝 부적 둘 다 20일) Swift 의 정렬은 **안정적이지 않아서**
+    /// 값이 같은 품목이 있으면(화분 슬롯·행운 부적 둘 다 20일) Swift 의 정렬은 **안정적이지 않아서**
     /// 실행할 때마다 순서가 바뀔 수 있다. rawValue 를 2차 키로 둬 순서를 고정한다.
     static var sortedByPrice: [ShopItem] {
         allCases.sorted { ($0.price, $0.rawValue) < ($1.price, $1.rawValue) }

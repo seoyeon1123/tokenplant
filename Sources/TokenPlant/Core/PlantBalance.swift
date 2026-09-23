@@ -313,6 +313,29 @@ enum PlantBalance {
     /// 상점에 갈 이유가 없다. 하루 +1%, 천장 +10% 로 내렸다.
     static func streakBonusPercent(days: Int) -> Int { min(max(0, days), 10) }
 
+    /// 연속 사용 선물이 나오는 날. **누적이 아니라 연속**이다.
+    ///
+    /// 달력(설치 후 N일)으로 하지 않은 이유: 그러면 앱만 켜두면 받는다.
+    /// 지갑이 "시간이 아니라 토큰을 써야 는다"인데 여기만 시간으로 주면 규칙에 구멍이 생긴다.
+    ///
+    /// 주는 건 **장식 뽑기 1회**뿐이다. 물·거름을 공짜로 주면 총 배율 예산(×2.10)이
+    /// 깨진다 — 장식은 꾸미기라 예산 밖이고, 뽑기에 "모을 이유"가 하나 더 생긴다.
+    ///
+    /// 3·7·14·30 인 이유: 상점 해금이 7일(고급 씨앗) → 10일(전설) → 17일(슬롯·부적)로
+    /// 끝나서 그 뒤에 새로 열리는 게 없다. 30일을 끝에 둬 그 공백을 덮는다.
+    static let streakGiftDays = [3, 7, 14, 30]
+
+    /// `days` 에 도달해서 받을 수 있는 마일스톤. 없으면 nil.
+    static func streakGift(reaching days: Int) -> Int? {
+        streakGiftDays.first { $0 == days }
+    }
+
+    /// 다음 선물까지 남은 일수. 다 받았으면 nil.
+    static func daysToNextGift(streak: Int) -> Int? {
+        guard let next = streakGiftDays.first(where: { $0 > streak }) else { return nil }
+        return next - streak
+    }
+
     /// 거름 지속 보너스 — **여기는 그대로다.** 25% / 7일 / 1.5일치면 회수비가 1.17배로,
     /// 물보다 조금 낫지만 압도하지는 않는다. 그 얇은 마진이 이 품목의 성격이다.
     static let fertilizerBonusPercent = 25

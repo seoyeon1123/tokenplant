@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 홈 탭의 화분. 스프라이트 + 게이지 + 연출.
+/// 화분 탭의 화분. 스프라이트 + 게이지 + 연출.
 ///
 /// 연출 길이의 근거: 팝오버는 사용자가 보려고 연 화면이라 조금 길어도 되지만,
 /// 물 주고 2초를 기다리게 하면 다음부터 안 누른다. 그래서 전부 1초 안쪽으로 끝낸다.
@@ -113,7 +113,7 @@ struct PotView: View {
         PotSprites.grid(stageIndex: pot?.stageIndex ?? 0, motif: store.species(slot).motif)
     }
 
-    /// 반짝이면 잎만 금색으로 갈아끼운다.
+    /// 행운이면 잎만 금색으로 갈아끼운다.
     private var paletteSpecies: PlantSpecies {
         pot?.isShiny == true ? PlantSpecies.shinyPalette(of: store.species(slot)) : store.species(slot)
     }
@@ -195,7 +195,7 @@ struct PotView: View {
             HStack(spacing: 5) {
                 Text(store.species(slot).name).font(.system(size: 13, weight: .semibold))
                 if pot?.isShiny == true {
-                    Text("반짝").font(.system(size: 9, weight: .medium))
+                    Text("행운").font(.system(size: 9, weight: .medium))
                         .padding(.horizontal, 5).padding(.vertical, 1)
                         .background(Capsule().fill(Color.yellow.opacity(0.30)))
                 }
@@ -311,7 +311,7 @@ struct PotView: View {
     private var tapHelp: String {
         if store.save.count(.water) <= 0 { return "토큰을 쓰면 저절로 자라요" }
         if store.waterUsesLeftToday <= 0 { return "오늘 물은 다 줬어요 — 내일 또 줄 수 있어요" }
-        return "물 주기 — 오늘 \(store.waterUsesLeftToday)번 더 (가방에 \(store.save.count(.water))개)"
+        return "물 주기 — 오늘 \(store.waterUsesLeftToday)번 더 (창고에 \(store.save.count(.water))개)"
     }
 
     /// 눌러서 아무 일이 안 일어나면 고장으로 읽힌다. 막힌 이유를 **화면에** 남긴다 —
@@ -399,6 +399,10 @@ struct PotView: View {
         }
     }
 
+    // 연속 사용 줄은 `TokenPlantApp.footnote` 하나로 합쳤다.
+    // 여기와 오늘 블록에 각각 두면 같은 내용이 두 줄로 뜬다 —
+    // 실제로 어제 그렇게 넣었다가 화면에서 겹쳤다.
+
     private func playCelebration() {
         // 여기서 store.consumeCelebration() 을 부르면 안 된다 —
         // 화분이 두 개일 때 먼저 그려진 쪽이 이벤트를 먹어버려 다른 쪽만 조용히 자란다.
@@ -419,7 +423,7 @@ struct PotView: View {
             bounceLeaves()
         case .fruitHarvest, .readyToTransplant:
             burstSparkle()
-        case .windowBurned, .decorFound:
+        case .windowBurned, .decorFound, .streakGift:
             // 둘 다 화분에 들어온 게 아니다(지갑 · 정원). 잎은 안 흔들고 반짝임만 터뜨린다 —
             // 게이지가 안 움직이는데 잎이 부풀면 자란 것처럼 읽힌다.
             burstSparkle()
@@ -438,7 +442,7 @@ struct PotView: View {
     }
 }
 
-/// 홈의 행동 줄 — 가방에 있는 가속 아이템 세 칸.
+/// 화분 탭의 행동 줄 — 창고에 있는 가속 아이템 세 칸.
 ///
 /// 화분이 두 개여도 한 벌이면 된다: 물은 나뉘지 않고 양쪽에 똑같이 들어간다.
 /// 여기 없으면 상점에서 사야 한다는 뜻이라, 0개일 때도 칸은 남겨 둔다 —
@@ -506,7 +510,7 @@ struct PotQuickSlots: View {
         case .nutrient:
             // 그루당 횟수만 봤더니, 이미 다 자란 그루(이식 대기)에서 버튼이 켜져 있었다.
             // 누르면 `.noEffect("이미 다 자랐어요")` 가 오고 화면엔 아무 일도 안 일어난다.
-            // 가방 쪽(`BagView.blockReason`)은 이 경우를 막고 있어서 두 화면이 달랐다.
+            // 창고 쪽(`BagView.blockReason`)은 이 경우를 막고 있어서 두 화면이 달랐다.
             guard store.nutrientAvailable(0) else { return true }
             guard let p = store.pot else { return true }
             return Nutrient.water(currentWater: p.water, cycle: p.cycleWater) <= 0

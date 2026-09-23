@@ -211,6 +211,7 @@ class Pot:
     planted: str = "1970-01-01"
     fruit: bool = False
     cycle: int = LEGACY_CYCLE_WATER
+    cycle_fitted: bool = False
     nutrient_uses: int = 0        # 그루에 기록한다 — 이식하면 저절로 풀린다
 
     @property
@@ -234,6 +235,7 @@ class Save:
     water_use_day: str = ""
     water_uses_today: int = 0
     streak: int = 0
+    streak_gifts: list = field(default_factory=list)
     last_decay_day: str = ""
     fert_until: str = None          # 날짜 키로 단순화
     tonic_until: str = None
@@ -295,6 +297,28 @@ def bump_streak(s, today):
     else:
         s.streak = 1
     s.last_use_day = today
+    grant_streak_gift(s)
+
+
+STREAK_GIFT_DAYS = [3, 7, 14, 30]
+
+
+def days_to_next_gift(streak):
+    nxt = next((d for d in STREAK_GIFT_DAYS if d > streak), None)
+    return None if nxt is None else nxt - streak
+
+
+def grant_streak_gift(s):
+    """연속 사용 마일스톤 — 장식 뽑기 1회. 마일스톤마다 **한 번만**."""
+    if s.streak not in STREAK_GIFT_DAYS: return
+    if s.streak in s.streak_gifts: return
+    s.streak_gifts.append(s.streak)
+    owned = set(s.decorations)
+    if any(k not in owned for k in GACHA_DECOR):
+        s.inv["decorBox"] = s.inv.get("decorBox", 0) + 1
+    elif (RANK[s.pending_guarantee] if s.pending_guarantee else -1) < RANK["rare"]:
+        s.pending_guarantee = "rare"
+    push(s, "streakGift")
 
 
 def grow(s, which, ml):
@@ -621,7 +645,8 @@ def plant_new_seed(s, roll, today="2026-09-01", slot=0):
     if slot == 0: s.pending_guarantee = None
     sp = pick_species(roll, g)
     shiny = rolls_shiny(roll >> 10, s.has_charm)
-    setattr(s, key, Pot(species=sp[0], shiny=shiny, planted=today, cycle=seed_cycle(s)))
+    setattr(s, key, Pot(species=sp[0], shiny=shiny, planted=today,
+                        cycle=seed_cycle(s), cycle_fitted=True))
     push(s, "newSeed", (sp[0], sp[1], shiny))
 
 

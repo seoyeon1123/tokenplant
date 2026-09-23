@@ -12,10 +12,16 @@ echo "0.2.0" > VERSION
 
 ```bash
 swift test
-python3 verify/check_syntax.py .
-python3 verify/check_members.py .
 python3 verify/check_data.py
 python3 verify/run_tests.py
+```
+
+`check_syntax.py` · `check_members.py` 는 `tree_sitter` 가 있어야 돈다.
+둘은 **Swift 컴파일러가 없는 환경**(클라우드 컨테이너)용이라, 맥에서는 `swift test` 가
+같은 일을 이미 한다. 맥에서도 돌리고 싶으면:
+
+```bash
+pip3 install tree_sitter tree_sitter_swift
 ```
 
 ## 3. 빌드 · 체크섬

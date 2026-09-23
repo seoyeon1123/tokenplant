@@ -29,6 +29,25 @@ SRC = ROOT / "Sources" / "TokenPlant"
 FAIL = []
 
 
+
+def _gen_decor():
+    """스프라이트 **원본**. 생성물(Swift)과 대조하려면 원본을 읽어야 한다."""
+    import importlib.util
+    path = pathlib.Path(__file__).with_name("gen_decor.py")
+    spec = importlib.util.spec_from_file_location("gen_decor", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def anim_frames():
+    return sum(len(v) for v in _gen_decor().ANIM.values())
+
+
+def bird_frames():
+    return len(_gen_decor().BIRD)
+
+
 def bad(where, msg):
     FAIL.append(f"{where}: {msg}")
 
@@ -159,7 +178,11 @@ def check_sprites():
     ic = read("Core/IconSprites.swift")
     for name, start, end, expect in [
         ("ItemIcons", "enum ItemIcons", "enum DecorIcons", 8 * 16),
-        ("DecorIcons", "enum DecorIcons", "enum MenuBarSprites", 12 * 16),
+        # 장식 12개(0번) + 움직이는 것들의 추가 프레임. 장수는 **원본(gen_decor.py)에서**
+        # 센다 — 여기 숫자를 손으로 적어두면 프레임을 추가하고 `--write` 를 빼먹어도
+        # 통과한다. 그 경우 파이썬에는 있고 Swift 에는 없는 프레임이 생긴다.
+        ("DecorIcons", "enum DecorIcons", "enum BirdIcon", (12 + anim_frames()) * 16),
+        ("BirdIcon", "enum BirdIcon", "enum MenuBarSprites", bird_frames() * 16),
         ("MenuBarSprites", "enum MenuBarSprites", None, 10 * 11 + 5),
     ]:
         rows = grids_in(ic, start, end)
@@ -208,7 +231,8 @@ def check_characters():
         ("PotSprites", ps, "enum PotSprites", "enum GardenSprites", plant),
         ("GardenSprites", ps, "enum GardenSprites", "enum PlantSpriteBuilder", plant),
         ("ItemIcons", ic, "enum ItemIcons", "enum DecorIcons", icon),
-        ("DecorIcons", ic, "enum DecorIcons", "enum MenuBarSprites", icon),
+        ("DecorIcons", ic, "enum DecorIcons", "enum BirdIcon", icon),
+        ("BirdIcon", ic, "enum BirdIcon", "enum MenuBarSprites", icon),
         ("MenuBarSprites", ic, "enum MenuBarSprites", None, plant),
     ]:
         seen = set("".join(grids_in(text, start, end)))
@@ -234,7 +258,7 @@ def check_shop_icons():
 
     # 장식은 `shopKeys` + `gachaKeys` 로 선언되고 정원이 그 키로 아트를 찾는다.
     # 선언에만 있고 아트가 없으면 정원에 빈칸이 놓이고, 뽑기는 그걸 "받았다"고 말한다.
-    dseg = ic[ic.index("enum DecorIcons"):ic.index("enum MenuBarSprites")]
+    dseg = ic[ic.index("enum DecorIcons"):ic.index("enum BirdIcon")]
     dkeys = set(re.findall(r'"(\w+)": \[', dseg))
     declared = []
     for field in ("shopKeys", "gachaKeys"):
@@ -271,6 +295,67 @@ def check_shop_icons():
         bad("decorPlacements", "장식 자리 계산이 한 곳에 없다")
     if gv.count("layout.decorPlacements(") < 2:
         bad("decorPlacements", "그리기와 끌기가 같은 자리 계산을 안 쓴다")
+
+    # ── 움직이는 것 ────────────────────────────────────────────
+    #
+    # 프레임이 있는 장식은 0번(`art`)과 나머지(`frames`)가 **같은 키**를 써야 한다.
+    # 프레임만 있고 0번이 없으면 `grid(_:frame:)` 이 nil 을 주고 장식이 통째로 사라진다.
+    m = re.search(r"static let frames: \[String: \[\[String\]\]\] = \[(.*?)\n    \]", dseg, re.S)
+    if not m:
+        bad("DecorIcons", "frames 선언이 없다 — 움직이는 장식이 정지 화면이 된다")
+    else:
+        fkeys = re.findall(r'^        "(\w+)": \[', m.group(1), re.M)
+        for k in fkeys:
+            if not re.search(rf'^        "{k}": \[\n            "', dseg, re.M):
+                bad("DecorIcons", f"{k} 는 프레임만 있고 0번 아트가 없다")
+        if not fkeys:
+            bad("DecorIcons", "frames 가 비었다")
+
+    # 새는 **소유물이 아니다.** 목록에 끼면 도감에 영영 안 채워지는 칸이 생긴다.
+    if "bird" in declared:
+        bad("BirdIcon", "새가 장식 목록에 있다 — 새는 사는 게 아니라 찾아오는 것이다")
+
+    # 정원이 실제로 프레임을 쓰는가. 파일에 프레임이 있어도 `compose` 가 0번만 그리면
+    # 화면은 여전히 정지 화면이다 — 스프라이트만 늘고 아무 일도 안 일어난다.
+    for needle, why in [
+        ("DecorIcons.grid(key, frame: frame)", "장식이 프레임을 안 쓴다"),
+        ("BirdIcon.grid(frame: bird.art)", "새가 자세를 안 쓴다"),
+        ("func birdPerch", "새 자리 계산이 없다"),
+        ("func hasMotion", "움직일 게 없을 때 타이머를 멈출 방법이 없다"),
+        ("activeState != .inactive", "창이 뒤에 있어도 5fps 로 다시 그린다"),
+        ("struct GardenCanvas", "돌리는 코드가 뷰마다 흩어져 있다 — 두 화면의 새가 다르게 논다"),
+        ("BirdFlight.pose(", "새가 날아오지 않는다 — 자리가 바뀌면 순간이동한다"),
+        (".onChange(of: perch", "모이통을 옮겨도 새가 따라오지 않는다"),
+        ("bird.facingLeft ? BirdIcon.size - 1 - gx : gx",
+         "새가 가는 쪽을 안 본다 — 왼쪽으로 갈 때 뒷걸음질로 날아온다"),
+    ]:
+        if needle not in gv:
+            bad("GardenView", why)
+
+    # 모이통·물받이가 새를 부르는 유일한 조건이다. 여기서 키를 바꾸면 조용히 새가 안 온다.
+    for k in ("feeder", "birdbath"):
+        if f'== "{k}"' not in gv:
+            bad("birdPerch", f"{k} 가 새를 부르지 않는다")
+    # 미니뷰도 같이 움직여야 한다. 정원 창은 3그루부터 열리는데 바람개비·고양이·새는
+    # 그 전에 나온다 — 미니뷰가 정지 화면이면 처음 몇 달은 아무도 못 본다.
+    cv = read("UI/CollectionView.swift")
+    if "GardenCanvas(" not in cv:
+        bad("CollectionView", "도감 미니뷰가 정지 화면이다 — 정원 창은 3그루부터라 그전엔 여기서만 보인다")
+    # 큰 창과 미니뷰가 **같은 캔버스**를 써야 한다. 갈리면 두 화면의 새가 다르게 논다.
+    if "GardenCanvas(layout:" not in gv:
+        bad("GardenView", "정원 창이 공용 캔버스를 안 쓴다 — 미니뷰와 새가 다르게 논다")
+
+    # 한도 조회가 30초 틱에 다시 묶이면 안 된다. 한 번 그렇게 묶여서 하루 2,880번을
+    # usage 엔드포인트에 보냈고 429 를 받았다 — 화면에는 "한도 조회가 제한됐어요"만 남는다.
+    app = read("TokenPlantApp.swift")
+    if "if shouldReadLimits {" not in app:
+        bad("TokenPlantApp", "한도 조회에 주기 제한이 없다 — 30초마다 네트워크와 프로세스를 때린다")
+    if "limits.rateLimited" not in app:
+        bad("TokenPlantApp", "429 를 받아도 안 쉰다 — 같은 주기로 계속 때리면 제한이 안 풀린다")
+
+    sv = read("UI/ShopView.swift")
+    if "새가 찾아와" not in sv:
+        bad("ShopView", "모이통 설명에 새 이야기가 없다 — 아무도 새를 못 본다")
 
 
 # ── 5b. 가격표가 두 언어에서 같은가 ───────────────────────────

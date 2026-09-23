@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 컬렉션 탭 — 정원 미니뷰 + 종 도감 + 기록.
+/// 도감 탭 — 정원 미니뷰 + 종 도감 + 기록.
 ///
 /// 좁은 팝오버에 정원을 다 넣으면 아무것도 안 보이므로 여기선 미니뷰만 보여주고,
 /// 전체는 별도 창으로 넘긴다(작은 화단 = 3그루부터 활성).
@@ -13,6 +13,7 @@ struct CollectionView: View {
     private var miniScale: CGFloat {
         max(1, floor(292 / CGFloat(layout.width)))
     }
+
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -36,16 +37,20 @@ struct CollectionView: View {
                     .font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
             }
 
-            // 정원 창과 **같은** 조립 함수를 쓴다 — 미니뷰가 큰 창과 달라 보이면 버그처럼 읽힌다.
-            PixelGridCanvas(grid: GardenComposer.compose(
-                layout: layout,
-                season: store.save.gardenCount >= 10 ? .current : .byKey("spring"),
-                entries: store.save.garden,
-                decorations: store.save.decorations,
-                currentPotStage: store.pot?.stageIndex,
-                currentSpecies: store.species,
-                // 옮겨둔 자리를 미니뷰도 따라야 한다 — 안 그러면 큰 창과 달라 보인다.
-                positions: store.save.decorPositions), scale: miniScale)
+            // 정원 창과 **같은** 캔버스를 쓴다 — 미니뷰가 큰 창과 달라 보이면 버그처럼 읽힌다.
+            //
+            // 미니뷰도 움직인다. 정원 창은 3그루부터 열리는데 바람개비·고양이·새는 그 전에
+            // 나온다 — 여기서 안 돌면 처음 몇 달 동안 움직이는 걸 아무도 못 본다.
+            // 이 뷰는 도감 탭이 열려 있을 때만 존재하므로, 탭을 옮기면 저절로 멈춘다.
+            GardenCanvas(layout: layout,
+                         season: store.save.gardenCount >= 10 ? .current : .byKey("spring"),
+                         entries: store.save.garden,
+                         decorations: store.save.decorations,
+                         // 옮겨둔 자리를 미니뷰도 따라야 한다 — 안 그러면 큰 창과 달라 보인다.
+                         positions: store.save.decorPositions,
+                         currentPotStage: store.pot?.stageIndex,
+                         currentSpecies: store.species,
+                         scale: miniScale)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .frame(maxWidth: .infinity, alignment: .center)
 
@@ -71,7 +76,7 @@ struct CollectionView: View {
 
     // MARK: 도감
 
-    /// 실루엣 3종 × 팔레트 — 흔함/보통/희귀/전설 15종 각각 일반·반짝 두 칸.
+    /// 실루엣 3종 × 팔레트 — 흔함/보통/희귀/전설 15종 각각 일반·행운 두 칸.
     /// 1차 목표는 흔함+보통 9종의 일반 칸이다.
     private var dexSection: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -89,9 +94,9 @@ struct CollectionView: View {
                 }
             }
 
-            // "반짝은 명패에만" 이라고 적어뒀는데 바로 위 도감 칸이 반짝 팔레트로 그리고
+            // "행운은 명패에만" 이라고 적어뒀는데 바로 위 도감 칸이 반짝 팔레트로 그리고
             // ✨ 배지까지 붙인다. 화면이 하는 일을 화면이 부정하고 있었다.
-            Text("미획득 칸은 실루엣만 보여요. 반짝은 ✨ 로 표시됩니다.")
+            Text("미획득 칸은 실루엣만 보여요. 행운은 ✨ 로 표시됩니다.")
                 .font(.system(size: 9)).foregroundStyle(.tertiary)
         }
     }

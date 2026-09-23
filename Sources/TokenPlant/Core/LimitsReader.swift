@@ -51,6 +51,9 @@ struct LimitsSnapshot: Sendable {
     /// 못 읽은 상태로 시드하면 이미 100%인 창을 나중에 소급 지급한다.
     var isReady = false
     var note: String?
+    /// 429 를 받았는가. 받았으면 호출부가 **쉬어야 한다** — 같은 주기로 계속 때리면
+    /// 제한이 안 풀린다. 이 플래그가 없을 때 30초마다 두들겨서 하루 2,880번을 보냈다.
+    var rateLimited = false
 
     /// 표시용 — 사용률이 가장 높은 창.
     var highest: LimitWindowInfo? { windows.max { $0.utilization < $1.utilization } }
@@ -68,6 +71,7 @@ enum LimitsReader {
             snap.isReady = true
             snap.windows.append(contentsOf: status.grantableWindows)
         } catch {
+            if case LimitsError.rateLimited = error { snap.rateLimited = true }
             notes.append(claudeNote(for: error))
         }
 

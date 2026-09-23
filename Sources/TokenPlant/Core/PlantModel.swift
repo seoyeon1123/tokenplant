@@ -3,7 +3,7 @@ import Foundation
 /// 표시 상태 — 사용량/방치로 결정(스프라이트 모션·상태 문구).
 /// PokeTokenBar 의 `CompanionStateKind` 자리를 그대로 대체한다.
 enum PlantStateKind: String, Sendable {
-    /// `hasItems` = 가방에 쓸 게 있다. 화분은 토큰만으로도 자라지만,
+    /// `hasItems` = 창고에 쓸 게 있다. 화분은 토큰만으로도 자라지만,
     /// 사놓고 잊어버린 물·영양제가 있으면 화면이 그걸 말해줘야 한다.
     case seed, idle, hasItems, thirsty, parched, levelUp
 }
@@ -109,8 +109,8 @@ struct PlantSpecies: Codable, Sendable, Identifiable, Equatable {
 
     static func all(_ rarity: PlantRarity) -> [PlantSpecies] { catalog.filter { $0.rarity == rarity } }
 
-    /// 반짝 변종 — 잎만 금색으로 갈아끼운다. 스프라이트는 그대로다.
-    /// 종마다 반짝 그림을 따로 그리면 15종 × 11장이 두 배가 된다.
+    /// 행운 변종 — 잎만 금색으로 갈아끼운다. 스프라이트는 그대로다.
+    /// 종마다 행운 그림을 따로 그리면 15종 × 11장이 두 배가 된다.
     static func shinyPalette(of s: PlantSpecies) -> PlantSpecies {
         var out = s
         out.leaf = "#f0cf5c"
@@ -119,19 +119,19 @@ struct PlantSpecies: Codable, Sendable, Identifiable, Equatable {
         return out
     }
 
-    /// 도감 칸 키 — (종, 반짝) 조합이 각각 한 칸이다.
+    /// 도감 칸 키 — (종, 행운) 조합이 각각 한 칸이다.
     static func dexKey(_ id: String, shiny: Bool) -> String { "\(id):\(shiny ? "s" : "n")" }
 }
 
 /// 개체 롤 확률.
 enum PlantOdds {
-    /// 반짝 변종 분모 — 1/128. 등급과 별개로 굴린다.
+    /// 행운 변종 분모 — 1/128. 등급과 별개로 굴린다.
     static let shinyDenominator: UInt64 = 128
-    /// 반짝 부적 보유 시 — 1/32.
+    /// 행운 부적 보유 시 — 1/32.
     ///
-    /// 1/64 였을 때는 20일치를 내고 정원 30그루 동안 반짝이 0.23 → 0.47마리였다.
+    /// 1/64 였을 때는 20일치를 내고 정원 30그루 동안 행운이 0.23 → 0.47마리였다.
     /// 한 마리도 확실하지 않은 데 사이클의 3/4을 거는 셈이라 아무도 안 산다.
-    /// 1/32 면 0.94마리 — "정원 하나에 반짝 하나" 가 되어 값이 이유를 갖는다.
+    /// 1/32 면 0.94마리 — "정원 하나에 행운 하나" 가 되어 값이 이유를 갖는다.
     static let shinyDenominatorWithCharm: UInt64 = 32
 
     static func rollsShiny(roll: UInt64, charmOwned: Bool) -> Bool {
@@ -176,9 +176,22 @@ struct PotState: Codable, Sendable, Equatable {
     /// 이 그루에 영양제를 몇 번 줬는지. **그루에** 기록해야 이식할 때 저절로 풀린다.
     var nutrientUses: Int
 
+    /// 목표를 이 사람 속도로 이미 한 번 맞췄나.
+    ///
+    /// **재조정은 그루당 한 번뿐이어야 한다.** 매번 다시 맞췄더니 규칙 하나가 뒤집혔다:
+    /// 며칠 쉬면 14일 평균이 내려가 목표가 줄고, 재조정은 "줄이는 방향만"이라 그대로 적용돼서
+    /// **진행도가 앞으로 점프**했다. 실측으로 20일차에 안 쉰 사람 73.0%, 사흘 쉰 사람 82.1% —
+    /// 스트릭은 빠짐을 벌주는데 여기서는 빠짐이 이득이었다.
+    ///
+    /// 재조정의 목적은 "남의 기본값(105M/일)에서 내 값으로 **한 번 오는 것**"이지
+    /// 내 사용량 변동을 계속 따라다니는 게 아니다.
+    var cycleFitted: Bool
+
     init(speciesID: String, water: Int = 0, stageIndex: Int = 0, isShiny: Bool = false,
          plantedAt: Date = Date(), nickname: String? = nil, fruitHarvested: Bool = false,
-         cycleWater: Int = PlantBalance.legacyCycleWater, nutrientUses: Int = 0) {
+         cycleWater: Int = PlantBalance.legacyCycleWater, nutrientUses: Int = 0,
+         cycleFitted: Bool = false) {
+        self.cycleFitted = cycleFitted
         self.speciesID = speciesID
         self.water = water
         self.stageIndex = stageIndex
@@ -227,6 +240,9 @@ struct PotState: Codable, Sendable, Equatable {
         // 키우던 그루의 목표를 업데이트가 바꿔버리면 안 된다.
         let savedCycle = (try? c.decode(Int.self, forKey: .cycleWater)) ?? PlantBalance.legacyCycleWater
         cycleWater = max(PlantBalance.minCycleWater, savedCycle)
+        // 이 필드가 없던 그루는 **아직 재조정을 안 받은 것**으로 친다. 재조정은 어차피
+        // 물이 목표의 1/3 아래일 때만 걸리므로, 한창 키우던 그루의 목표가 바뀌지는 않는다.
+        cycleFitted = (try? c.decode(Bool.self, forKey: .cycleFitted)) ?? false
     }
 }
 

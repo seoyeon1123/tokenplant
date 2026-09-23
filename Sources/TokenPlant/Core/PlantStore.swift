@@ -157,7 +157,8 @@ final class PlantStore {
         persist()
     }
 
-    /// 초반 그루의 목표를 이 사람 속도로 다시 잡는다. **갱신마다 시도하고, 줄이는 방향만.**
+    /// 초반 그루의 목표를 이 사람 속도로 다시 잡는다.
+    /// **갱신마다 시도하되, 그루당 한 번만 · 줄이는 방향만.**
     ///
     /// 첫 그루는 `load()` 안에서 심긴다 — 그때 `dailyRaw` 가 비어 있어서 목표가
     /// `assumedDailyRaw`(하루 105M) 기준 422,576mL 로 박힌다. 하루 5M 쓰는 사람에게 **588일**,
@@ -171,6 +172,9 @@ final class PlantStore {
     ///    3일 뒤 실제 유입이 측정돼도 **다시 잡을 기회가 없었다.** → 갱신마다 시도한다.
     ///  - `stageIndex == 0` 만 봤다. 첫날 상한이 바로 3~5단계까지 밀어올려서
     ///    이 조건에 **한 번도** 걸리지 않았다. → 단계가 아니라 **줄이는 방향인지**로 판단한다.
+    ///  - 그러자 이번엔 **쉬면 이득**이 됐다. 며칠 안 쓰면 14일 평균이 내려가 목표가 줄고,
+    ///    "줄이는 방향만"이라 그대로 적용돼 진행도가 앞으로 뛴다. 실측으로 20일차에
+    ///    안 쉰 사람 73.0% vs 사흘 쉰 사람 82.1%. → **그루당 한 번**으로 막는다.
     ///
     /// 실측: 로그 없이 설치한 하루 5M 사용자가 2일째에 422,576 → 36,848mL 로 잡히고
     /// "이식까지 567일" → "45일" 로 바뀐다. 그 전에는 첫 그루가 영영 완주하지 못했다.
@@ -182,6 +186,10 @@ final class PlantStore {
         for key in [\PlantSave.pot, \PlantSave.pot2] {
             guard var p = save[keyPath: key] else { continue }
 
+            // **그루당 한 번.** 매번 맞췄더니 며칠 쉰 사람의 목표가 같이 줄어서
+            // 진행도가 앞으로 뛰었다(20일차에 안 쉰 73.0% vs 사흘 쉰 82.1%).
+            // 스트릭이 빠짐을 벌주는데 여기서 보상하면 두 규칙이 반대로 간다.
+            guard !p.cycleFitted else { continue }
             // **줄이는 방향만.** 늘리면 게이지가 뒤로 가고 "쓰면 자란다"가 깨진다.
             // 줄이는 건 반대로 진행도가 앞으로 뛰는 것이라 사용자가 손해 볼 게 없다.
             guard fitted < p.cycleWater else { continue }
@@ -189,6 +197,7 @@ final class PlantStore {
             guard p.water < p.cycleWater / 3 else { continue }
 
             p.cycleWater = fitted
+            p.cycleFitted = true
             // 단계 임계값이 목표의 **비율**이라 목표가 줄면 단계가 올라간다.
             // `grow` 는 물이 들어올 때만 도니까 여기서 직접 맞춘다 —
             // 안 하면 게이지는 꽉 찼는데 스프라이트만 씨앗인 상태가 남는다.
@@ -271,7 +280,10 @@ final class PlantStore {
         // 여기 있었을 때는 `noteThirst` 가 30초마다 이벤트를 밀어넣고 → 여기서 뽑히고 →
         // `persist()` 가 돌아서, 물을 안 준 사람이 **하루 2,880번** 세이브를 다시 썼다.
         // `decor` 는 반대 이유로 넣었다 — 없으면 뽑기 이벤트가 뽑히지도 못하고 버려졌다.
-        let priority = ["fruit", "newSeed", "transplant", "levelUp", "decor", "ready", "window"]
+        // `streakGift` 는 `decor` 보다 앞이다. 선물을 받은 날 마침 뽑기를 돌렸으면 둘이 같이
+        // 쌓이는데, 장식이 이기면 **선물이 왔다는 사실 자체가 안 보인다**(창고에 조용히 들어간다).
+        let priority = ["fruit", "newSeed", "transplant", "levelUp",
+                        "streakGift", "decor", "ready", "window"]
         let chosen = priority.compactMap { key in events.first { $0.coalesceKey == key } }.first
         guard let chosen else { return }
         celebration = chosen
@@ -453,10 +465,16 @@ final class PlantStore {
     /// 최근 14일 달력일 평균 유입(원시 토큰/일). 표본이 3일 미만이면 실측 기본값.
     var dailyRate: Int { PlantBalance.dailyRawRate(save.dailyRaw) }
 
+    /// 다음 연속 사용 선물까지 남은 일수. 다 받았으면 nil.
+    var daysToNextGift: Int? { PlantBalance.daysToNextGift(streak: save.streakDays) }
+
+    /// 창고에 든 무료 뽑기권 수. 상점이 "값을 낼지 말지"를 여기서 판단한다.
+    var freeDraws: Int { save.count(.decorBox) }
+
     /// 물 한 개가 실제로 넣는 기본 mL — **엔진과 같은 환산비율**을 쓴다.
     ///
     /// 화면이 상수로 환산한 숫자를 보여주고 엔진은 실측으로 부으면 둘이 어긋난다.
-    /// 예전에 같은 실수를 한 적이 있다(가방 문구가 보너스를 먹인 뒤 값을 찍었다).
+    /// 예전에 같은 실수를 한 적이 있다(창고 문구가 보너스를 먹인 뒤 값을 찍었다).
     /// 한 곳에서 계산해 UI 가 갖다 쓰게 둔다.
     var waterML: Int {
         let ratio = PlantBalance.measuredRawPerML(raw: save.dailyRaw, water: save.dailyWater)
@@ -546,7 +564,7 @@ final class PlantStore {
         switch displayState {
         case .seed:     return "막 심었어요. 토큰을 쓰면 저절로 자랍니다."
         case .idle:     return "잘 자라고 있어요."
-        case .hasItems: return "가방에 쓸 게 있어요. 주면 더 빨리 자랍니다."
+        case .hasItems: return "창고에 쓸 게 있어요. 주면 더 빨리 자랍니다."
         case .thirsty:  return "목말라요. 토큰을 쓴 지 며칠 됐어요."
         case .parched:  return "바싹 말랐어요. 한 번 자라면 색이 돌아옵니다."
         case .levelUp:  return "자랐어요!"

@@ -31,6 +31,12 @@ enum PlantEvent: Codable, Sendable, Equatable {
     case transplanted(speciesID: String, isShiny: Bool)
     case thirsty
     case newSeed(speciesID: String, rarity: PlantRarity, isShiny: Bool)
+    /// 연속 사용 마일스톤에 도달해 선물이 들어왔다.
+    ///
+    /// **여기서 장식을 뽑지 않는다.** 받는 순간이 아니라 **여는 순간**에 결과가 있어야 한다 —
+    /// 자동으로 장식이 생기고 회색 글씨로 알려주면 그건 선물이 아니라 영수증이다.
+    /// 뽑기를 만들 때 한 번 겪은 실수라 같은 자리를 두 번 밟지 않는다.
+    case streakGift(days: Int)
     /// 장식 뽑기에서 새 장식이 나왔다. **뭐가 나왔는지**를 실어야 한다 —
     /// "장식을 받았어요"만 띄우면 정원을 열어봐야 확인이 된다.
     case decorFound(key: String)
@@ -47,6 +53,7 @@ enum PlantEvent: Codable, Sendable, Equatable {
         case .transplanted: return "transplant"
         case .thirsty: return "thirsty"
         case .newSeed: return "newSeed"
+        case .streakGift: return "streakGift"
         case .decorFound: return "decor"
         case .windowBurned: return "window"
         }
@@ -123,6 +130,9 @@ struct PlantSave: Codable, Sendable {
     var historyBackfilled = false
     var lastUseDay = ""                    // 토큰을 쓴 마지막 날 (스트릭 기준)
     var streakDays = 0
+    /// 이미 받은 연속 사용 마일스톤(일수). **한 번만 준다** —
+    /// 안 그러면 3일 쓰고 하루 쉬기를 반복하는 게 제일 이득인 게임이 된다.
+    var streakGiftsClaimed: [Int] = []
     var fertilizerExpiresAt: Date?
 
     // 연출 대기열
@@ -176,6 +186,7 @@ struct PlantSave: Codable, Sendable {
         historyBackfilled = g(.historyBackfilled, false)
         lastUseDay = g(.lastUseDay, "")
         streakDays = max(0, g(.streakDays, 0))
+        streakGiftsClaimed = g(.streakGiftsClaimed, [Int]())
         fertilizerExpiresAt = try? c.decode(Date.self, forKey: .fertilizerExpiresAt)
         pendingEvents = g(.pendingEvents, [PlantEvent]())
         windowGrantTier = g(.windowGrantTier, [String: Int]())
@@ -201,7 +212,7 @@ struct PlantSave: Codable, Sendable {
         return max(1, Calendar.current.dateComponents([.day], from: now, to: e).day ?? 1)
     }
 
-    /// 도감 — 획득한 (종, 반짝) 조합.
+    /// 도감 — 획득한 (종, 행운) 조합.
     var dexKeys: Set<String> {
         Set(garden.map { "\($0.speciesID):\($0.isShiny ? "s" : "n")" })
     }
@@ -362,6 +373,29 @@ enum PlantEngine {
             save.streakDays = 1
         }
         save.lastUseDay = today
+        grantStreakGift(&save)
+    }
+
+    /// 연속 사용 마일스톤 — 도달하면 **장식 뽑기 1회**를 창고에 넣는다.
+    ///
+    /// 장식만 주는 이유: 총 배율 예산(×2.10)은 물·스트릭·거름·영양제로 이미 꽉 차 있다.
+    /// 물이나 거름을 공짜로 주면 그 예산이 깨지고, 실측 배율을 1.40 으로 맞춘 작업이
+    /// 무의미해진다. 장식은 꾸미기라 예산 밖이다.
+    ///
+    /// 아홉 종을 이미 다 모았으면 뽑기권은 값이 없으므로 고급 씨앗 보증으로 바꾼다.
+    /// 그것도 이미 같거나 높은 게 예약돼 있으면 건너뛴다 — 산 전설 위에 고급을 덮으면 안 된다.
+    static func grantStreakGift(_ save: inout PlantSave) {
+        guard let milestone = PlantBalance.streakGift(reaching: save.streakDays) else { return }
+        guard !save.streakGiftsClaimed.contains(milestone) else { return }
+        save.streakGiftsClaimed.append(milestone)
+
+        let owned = Set(save.decorations)
+        if DecorIcons.gachaKeys.contains(where: { !owned.contains($0) }) {
+            save.inventory[ShopItem.decorBox.rawValue, default: 0] += 1
+        } else if (save.pendingSeedGuarantee?.sortRank ?? -1) < PlantRarity.rare.sortRank {
+            save.pendingSeedGuarantee = .rare
+        }
+        push(&save, .streakGift(days: milestone))
     }
 
     // MARK: 목마름 — 외형만
@@ -477,7 +511,7 @@ enum PlantEngine {
         save.rawSpentTotal += cost
         if item.isPassive {
             save.passives.append(item.rawValue)
-            // 장식은 가방에 담을 이유가 없다 — 살 때 정원에 바로 놓인다.
+            // 장식은 창고에 담을 이유가 없다 — 살 때 정원에 바로 놓인다.
             if item.isDecoration { save.decorations.append(item.rawValue) }
             // 화분 슬롯은 사는 즉시 두 번째 화분이 생긴다 — 씨앗은 다음 이식 때 심긴다.
             if item == .potSlot, save.pot2 == nil, let first = save.pot {
@@ -489,7 +523,7 @@ enum PlantEngine {
                                      cycleWater: seedCycle(save))
             }
         } else {
-            // 사면 가방으로 들어간다. 즉시 발동이 아니다 —
+            // 사면 창고로 들어간다. 즉시 발동이 아니다 —
             // 영양제는 언제 쓰느냐가 값어치를 좌우해서, 살 때 터지면 고를 기회가 사라진다.
             save.inventory[item.rawValue] = save.count(item) + 1
         }
@@ -658,7 +692,7 @@ enum PlantEngine {
                                        rawPerML: ratio)
     }
 
-    /// 새 씨앗을 심는다. 종은 등급 가중 추첨, 반짝은 별개로 굴린다.
+    /// 새 씨앗을 심는다. 종은 등급 가중 추첨, 행운은 별개로 굴린다.
     static func plantNewSeed(_ save: inout PlantSave, slot: Int = 0, roll: UInt64, now: Date = Date()) {
         let key: WritableKeyPath<PlantSave, PotState?> = slot == 0 ? \.pot : \.pot2
         // 보증은 첫 화분에만 소비한다 — 두 슬롯이 동시에 완주해도 산 것을 두 번 받으면 안 된다.
@@ -669,8 +703,11 @@ enum PlantEngine {
         // 이 그루의 목표를 **여기서 한 번** 정한다. 그 사람 속도로 4주.
         // 자라는 동안에는 절대 안 바뀐다 — 바뀌면 많이 쓴 날 목표도 같이 도망간다.
         let cycle = seedCycle(save)
+        // `seedCycle` 이 이미 실측으로 잡은 값이라 **다시 맞출 일이 없다.**
+        // 표시를 안 해두면 이 그루도 나중에 사용량이 줄 때 목표가 따라 줄어든다.
         save[keyPath: key] = PotState(speciesID: species.id, water: 0, stageIndex: 0,
-                                      isShiny: shiny, plantedAt: now, cycleWater: cycle)
+                                      isShiny: shiny, plantedAt: now, cycleWater: cycle,
+                                      cycleFitted: true)
         push(&save, .newSeed(speciesID: species.id, rarity: species.rarity, isShiny: shiny))
     }
 
@@ -701,7 +738,7 @@ enum PlantEngine {
         if thirst >= 1 { return .parched }
         if thirst > 0 { return .thirsty }
 
-        // 가방에 쓸 게 있으면 그게 최우선 문구다 — 사놓고 잊어버리면 산 의미가 없다.
+        // 창고에 쓸 게 있으면 그게 최우선 문구다 — 사놓고 잊어버리면 산 의미가 없다.
         if save.count(.water) > 0 || save.count(.nutrient) > 0
             || (save.count(.fertilizer) > 0 && !save.fertilizerActive(now: now)) {
             return .hasItems

@@ -511,6 +511,69 @@ def slow_typecheck_errors(root):
     return bad
 
 
+
+# ── 디코더가 모든 저장 프로퍼티를 채우는가 ─────────────────────
+#
+# 이 실수로 두 번 깨졌다. 저장 프로퍼티를 하나 추가하고 `init(from decoder:)` 에
+# 한 줄 넣는 걸 빼먹으면 **"return from initializer without initializing all stored
+# properties"** 로 빌드가 통째로 멈춘다. 스위프트 컴파일러가 없는 환경에서는
+# 이 한 줄 때문에 왕복이 한 번 더 생긴다 — 그래서 여기서 먼저 잡는다.
+#
+# 기본값(`= ...`)이 있는 프로퍼티는 뺀다. 컴파일은 통과하기 때문이다.
+# (그건 "조용히 기본값을 먹는" 다른 문제고, 여기서 섞으면 경고가 시끄러워진다.)
+STORED = re.compile(
+    r"^    (?:@\w+\s+)?(?:private\s+|fileprivate\s+|public\s+|internal\s+)?"
+    r"(?:var|let)\s+(\w+)\s*:\s*[^={]+$")
+
+
+def decoder_init_errors(root):
+    out = []
+    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+        lines = f.read_text(encoding="utf8").split("\n")
+        for i, line in enumerate(lines):
+            if "init(from decoder" not in line or line.lstrip().startswith("//"):
+                continue
+
+            # 이 init 을 감싼 타입 본문의 범위를 찾는다 — 바로 위로 올라가며
+            # 들여쓰기 0칸의 타입 선언을 만나는 지점이 시작이다.
+            start = None
+            for j in range(i, -1, -1):
+                if re.match(r"^(?:final\s+)?(?:struct|class|actor|enum)\s+\w+", lines[j]):
+                    start = j
+                    break
+            if start is None:
+                continue
+            end = len(lines)
+            for j in range(i + 1, len(lines)):
+                if lines[j] == "}":
+                    end = j
+                    break
+
+            props = []
+            for j in range(start, end):
+                code = _strip_comments(lines[j])
+                if "static" in code.split(":")[0]:
+                    continue
+                m = STORED.match(code.rstrip())
+                if m:
+                    props.append((m.group(1), j + 1))
+
+            # init 본문 — 여는 중괄호부터 균형이 맞을 때까지.
+            depth, body, k = 0, [], i
+            while k < end:
+                depth += lines[k].count("{") - lines[k].count("}")
+                body.append(lines[k])
+                if depth <= 0 and "{" in "".join(body):
+                    break
+                k += 1
+            text = "\n".join(body)
+
+            for name, ln in props:
+                if re.search(rf"(?:^|[^.\w]){re.escape(name)}\s*=[^=]", text):
+                    continue
+                out.append((str(f.relative_to(root)), ln, name, lines[ln - 1].strip()))
+    return out
+
 def main(root):
     declared = collect_declared(root)
     cases = collect_cases(root)
@@ -575,6 +638,13 @@ def main(root):
         print(f"  {path}:{n}   → 리터럴 집합에 타입을 박아 지역 변수로 뺄 것")
         print(f"      {text[:110]}")
     total += len(slow_bad)
+
+    dec_bad = decoder_init_errors(root)
+    for path, n, name, text in dec_bad:
+        print(f"\n`init(from decoder:)` 가 저장 프로퍼티 `{name}` 를 안 채운다:")
+        print(f"  {path}:{n}   → 디코더에 한 줄 추가할 것 (기본값을 주는 것도 방법)")
+        print(f"      {text[:110]}")
+    total += len(dec_bad)
 
     switch_bad = switch_case_errors(root, declared, cases)
     if switch_bad:

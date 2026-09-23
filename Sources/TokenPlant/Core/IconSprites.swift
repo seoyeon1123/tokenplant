@@ -460,6 +460,205 @@ enum DecorIcons {
         guard let rows = art[key] else { return nil }
         return rows.map { Array($0) }
     }
+
+    /// 움직이는 장식의 **1번 프레임부터**. 0번은 `art` 에 이미 있다.
+    ///
+    /// 바람개비는 0°/45° 두 장이면 한 바퀴가 돈다 — 날개가 넷이라 90°마다 같은 그림이다.
+    /// 고양이는 꼬리만 움직인다. 16px 에서 몸을 건드리면 덩어리가 흔들려 지저분해진다.
+    static let frames: [String: [[String]]] = [
+        "windmill": [
+            [
+                ".....KWWWK......",
+                ".....KWWWK......",
+                ".....KWWWK......",
+                ".KKKKKKKKKKKKK..",
+                ".KWWWKKKKKWWWK..",
+                ".KWWWKKKKKWWWK..",
+                ".KWWWKKKKKWWWK..",
+                ".KKKKKKKKKKKKK..",
+                ".....KWWWK......",
+                ".....KWWWK......",
+                ".....KWWWK......",
+                "......KwwK......",
+                "......KwwK......",
+                ".....KxxxxK.....",
+                ".....KKKKKK.....",
+                "................",
+            ],
+        ],
+        "cat": [
+            [
+                "................",
+                "................",
+                "...KK.....KK....",
+                "..KyyK...KyyK...",
+                "..KyyyKKKyyyK...",
+                "..KyyyyyyyyyK...",
+                "..KyKyyyyyKyK...",
+                "..KyyyyKyyyyK...",
+                "...KyyyyyyyK....",
+                "....KyyyyyK..K..",
+                "....KyyyyyK.KyK.",
+                "....KyyyyyK.KyK.",
+                "....KyyyyyKKyK..",
+                "....KyyyyyyyK...",
+                ".....KKKKKKK....",
+                "................",
+            ],
+            [
+                "................",
+                "................",
+                "...KK.....KK....",
+                "..KyyK...KyyK...",
+                "..KyyyKKKyyyK...",
+                "..KyyyyyyyyyK...",
+                "..KKKyyyyyKKK...",
+                "..KyyyyKyyyyK...",
+                "...KyyyyyyyK....",
+                "....KyyyyyK..K..",
+                "....KyyyyyK.KyK.",
+                "....KyyyyyK.KyK.",
+                "....KyyyyyKKyK..",
+                "....KyyyyyyyK...",
+                ".....KKKKKKK....",
+                "................",
+            ],
+        ],
+        "birdbath": [
+            [
+                "................",
+                "................",
+                "................",
+                "...KKKKKKKKKK...",
+                "..KEBBVBBBBBEK..",
+                "..KEBBBVBBBVEK..",
+                "..KEEBBBBBBEEK..",
+                "...KEEEEEEEEK...",
+                ".....KEEEEK.....",
+                "......KEEK......",
+                "......KEEK......",
+                ".....KEEEEK.....",
+                "....KEEEEEEK....",
+                "....KKKKKKKK....",
+                "................",
+                "................",
+            ],
+            [
+                "................",
+                "................",
+                "................",
+                "...KKKKKKKKKK...",
+                "..KEBBBBVBBBEK..",
+                "..KEVBBBBBBVEK..",
+                "..KEEBBBBBBEEK..",
+                "...KEEEEEEEEK...",
+                ".....KEEEEK.....",
+                "......KEEK......",
+                "......KEEK......",
+                ".....KEEEEK.....",
+                "....KEEEEEEK....",
+                "....KKKKKKKK....",
+                "................",
+                "................",
+            ],
+        ],
+    ]
+
+    /// 0번 포함 전체 장수. 움직이지 않는 장식은 1이다.
+    static func frameCount(_ key: String) -> Int {
+        (frames[key]?.count ?? 0) + 1
+    }
+
+    /// `frame` 은 아무 수나 와도 된다 — 장수로 나눠 돌린다.
+    static func grid(_ key: String, frame: Int) -> [[Character]]? {
+        guard let zero = art[key] else { return nil }
+        let extra = frames[key] ?? []
+        guard !extra.isEmpty else { return zero.map { Array($0) } }
+        let i = ((frame % (extra.count + 1)) + extra.count + 1) % (extra.count + 1)
+        let rows = i == 0 ? zero : extra[i - 1]
+        return rows.map { Array($0) }
+    }
+}
+
+/// 새. **장식이 아니다** — 상점에도 뽑기에도 없고, 모이통이나 물받이를 놓아두면 찾아온다.
+///
+/// 그래서 `DecorIcons` 와 따로 둔다. 소유물 목록에 섞이면 도감에 빈 칸이 생긴다.
+/// 세 장이다 — 앉음 · 날갯짓 · 쪼기. 옆모습에서 날개를 세우면 토끼 귀로 읽혀서,
+/// 날갯짓은 두 칸 떠오른 자세로 대신한다. 그 장을 폴짝 뛰는 데도 같이 쓴다.
+///
+/// **생성물이다.** 원본은 `verify/gen_decor.py`.
+enum BirdIcon {
+    static let size = 16
+
+    static let art: [[String]] = [
+        [
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "......KKKK......",
+            ".....KqqqqK.KK..",
+            ".....KqKqqKKYK..",
+            "....KqqqqqqKK...",
+            "..KKqqxxxqqK....",
+            ".KqqqqxxxqqK....",
+            "..KKqqqqqqK.....",
+            "......K..K......",
+            "................",
+        ],
+        [
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "......KKKK......",
+            ".....KqqqqK.KK..",
+            ".....KqKqqKKYK..",
+            "....KqqqqqqKK...",
+            "..KKqxxxxqqK....",
+            ".KqqqxxxxqqK....",
+            "..KKqqqqqqK.....",
+            "................",
+            "................",
+            "................",
+            "................",
+        ],
+        [
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "................",
+            "..KK............",
+            ".KqqK...........",
+            ".KqqqKKKK.......",
+            "..KqqqqqqqK.....",
+            "..KqqxxxqqqK....",
+            "...KqqqqqqqK....",
+            "....KKqqqqK.....",
+            ".....KqqK.......",
+            "......KYK.......",
+        ],
+    ]
+
+    /// 자세 번호. 순서대로 돌리는 게 아니라 **골라 쓴다** —
+    /// 날아오는 중엔 `flying`, 내려앉으면 `perched`, 가끔 `pecking`.
+    static let perched = 0
+    static let flying = 1
+    static let pecking = 2
+
+    static var frameCount: Int { art.count }
+
+    static func grid(frame: Int) -> [[Character]] {
+        let i = ((frame % art.count) + art.count) % art.count
+        return art[i].map { Array($0) }
+    }
 }
 
 enum MenuBarSprites {

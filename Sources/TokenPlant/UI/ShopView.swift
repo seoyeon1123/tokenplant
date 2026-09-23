@@ -3,7 +3,7 @@ import SwiftUI
 /// 상점 탭. 값은 전부 **원시 토큰** — 메뉴바에 뜨는 그 숫자로 산다.
 ///
 /// 화분은 토큰만 써도 자란다. 여기서 사는 건 **가속**이고, 사도 이미 자란 건 줄지 않는다.
-/// 사면 가방으로 들어간다(즉시 발동 아님) — 언제 쓰느냐가 값어치를 좌우하기 때문이다.
+/// 사면 창고로 들어간다(즉시 발동 아님) — 언제 쓰느냐가 값어치를 좌우하기 때문이다.
 struct ShopView: View {
     let store: PlantStore
     @State private var flash: String?
@@ -132,7 +132,7 @@ struct ShopView: View {
 
     // MARK: 장식 뽑기 — **누르는 순간에 결과가 있어야 한다**
     //
-    // 처음 만든 건 뽑기가 아니라 영수증이었다: 상점에서 사고 → 가방 탭으로 옮겨서 →
+    // 처음 만든 건 뽑기가 아니라 영수증이었다: 상점에서 사고 → 창고 탭으로 옮겨서 →
     // 「사용」을 누르면 → 회색 글씨 한 줄. 상자도 안 열리고 장식 그림도 안 보인다.
     // "뭔지 모르겠다"는 말이 나온 게 당연하다.
     //
@@ -179,9 +179,13 @@ struct ShopView: View {
         .padding(.leading, 24)
     }
 
-    /// 사고 여는 것을 **한 번에** 한다. 가방을 거치면 그게 곧 뽑기가 아니게 된다.
+    /// 사고 여는 것을 **한 번에** 한다. 창고를 거치면 그게 곧 뽑기가 아니게 된다.
     private func drawDecor() {
-        guard store.buy(.decorBox) == .ok else { return }
+        // 연속 사용 선물로 받은 뽑기권이 창고에 있으면 **값을 내지 않는다.**
+        // 재고를 안 보고 늘 사면 선물이 그냥 사라진다.
+        if store.freeDraws == 0 {
+            guard store.buy(.decorBox) == .ok else { return }
+        }
         guard case .ok = store.use(.decorBox), let key = store.lastDecorFound else { return }
         flash = nil
         revealSeq += 1
@@ -210,6 +214,16 @@ struct ShopView: View {
     @ViewBuilder
     private func priceColumn(_ item: ShopItem, state: PurchaseResult) -> some View {
         VStack(alignment: .trailing, spacing: 2) {
+            // 무료 뽑기권은 값표 자체를 대신한다. 값을 회색으로 띄워두면
+            // 지갑이 모자라 보여서, 이미 받은 선물을 못 여는 줄 안다.
+            if item == .decorBox && store.freeDraws > 0 && !gachaLeft.isEmpty {
+                Text("선물 \(store.freeDraws)회")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Color.orange)
+                Button("무료 뽑기") { drawDecor() }
+                    .controlSize(.small)
+                    .buttonStyle(.borderedProminent)
+            } else {
             switch state {
             case .alreadyOwned:
                 Text("보유 중").font(.system(size: 10, weight: .medium)).foregroundStyle(.green)
@@ -238,12 +252,13 @@ struct ShopView: View {
                         } else if item.isPassive {
                             flash = "\(item.name) — 바로 적용됐어요"
                         } else {
-                            flash = "\(item.name) — 가방에 담았어요"
+                            flash = "\(item.name) — 창고에 담았어요"
                         }
                     }
                 }
                 .controlSize(.small)
                 .buttonStyle(.borderedProminent)
+            }
             }
         }
     }
@@ -289,7 +304,7 @@ struct ShopView: View {
         case .water:
             // "언제 써도 같아요" 는 사실이 아니었다 — `applyWater` 가
             // 스트릭·거름 보너스를 곱해서, 같은 물 한 개가 날마다 다른 양으로 들어간다.
-            // (가방 문구는 보너스를 먹인 뒤 값을 찍어서 둘이 서로 달랐다.)
+            // (창고 문구는 보너스를 먹인 뒤 값을 찍어서 둘이 서로 달랐다.)
             // 여기 적는 건 보너스 전 기본량이고, 하루 상한도 같이 알려준다.
             return "기본 +\(store.waterML.formatted()) mL"
                  + " · 하루 \(PlantBalance.dailyWaterUses)번까지 (보너스만큼 더 들어가요)"
@@ -317,15 +332,26 @@ struct ShopView: View {
             return "남은 거리 −\(pct)% · 한 그루에 한 번"
                  + " · 지금 +\(back.formatted()) mL \(vsWater(item, back))"
 
-        case .premiumSeed: return "다음 씨앗 희귀 이상 확정"
-        case .legendarySeed: return "다음 씨앗 전설 확정"
-        case .shinyCharm: return "반짝 확률 1/128 → 1/32 (영구)"
+        // **뭘 받는지**를 적는다. 예전엔 "다음 씨앗 전설 확정" 뿐이라,
+        // 7일치를 내고 뭐가 오는지 모른 채 사야 했다. 확률만 적어도 마찬가지다 —
+        // "3%" 는 희소성이지 받는 물건이 아니다.
+        case .premiumSeed: return "대나무·단풍·벚나무·꽃선인장 중 하나 (전설이 나올 수도)"
+        case .legendarySeed: return "세계수 또는 무지개꽃"
+        case .shinyCharm: return "잎이 금색으로 물든 그루 (영구)"
         case .potSlot: return "동시에 두 그루 (영구)"
-        // 장식은 효과가 없다. 그걸 숨기지 않고 그대로 쓴다 —
-        // 효과가 있는 줄 알고 사면 그 값이 그냥 사라진 게 된다.
-        case .bench: return "정원에 벤치를 놓아요 (효과 없음)"
-        case .feeder: return "정원에 새 모이통을 놓아요 (효과 없음)"
-        case .lantern: return "정원에 석등을 놓아요 (효과 없음)"
+        // **없는 걸 말하지 않는다.** 예전엔 `(효과 없음)` 이라고 적었는데,
+        // 벤치는 실제로 정원에 놓이고 자리도 옮길 수 있다 — "사봐야 소용없음" 으로 읽혔다.
+        // "성장에 도움이 안 된다"는 경고는 카테고리(`장식`)가 이미 하고 있다.
+        //
+        // 대신 **끌어서 옮길 수 있다**는 걸 여기 적는다. 지금 그 기능이 어디에도
+        // 안 적혀 있어서, 정원 창에서 우연히 끌어봐야 발견한다.
+        // 장식을 사는 이유가 사실 그거다 — 놓이는 게 아니라 **내가 배치하는** 것.
+        // 모이통만 따로 말한다 — 유일하게 **뭔가를 불러오는** 장식이다.
+        // 이걸 안 적으면 새는 아무도 못 본다. 놓고 나서 우연히 발견하길 기대할 수는 없다.
+        case .feeder:
+            return "정원에 놓여요 · 새가 찾아와요"
+        case .bench, .lantern:
+            return "정원에 놓여요 · 자리는 끌어서 옮겨요"
         // 몇 개가 남았는지를 적는다. "랜덤"만 쓰면 이미 다 모은 사람이 또 산다.
         case .decorBox:
             let left = gachaLeft.count
@@ -345,7 +371,7 @@ struct ShopView: View {
     }
 }
 
-/// 가방 탭. 개수·지속 효과 남은 일수·씨앗 재고.
+/// 창고 탭. 개수·지속 효과 남은 일수·씨앗 재고.
 struct BagView: View {
     let store: PlantStore
     @State private var flash: String?
@@ -353,7 +379,7 @@ struct BagView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             section("소모품") {
-                // 장식 뽑기는 상점에서 사는 즉시 열린다(`drawDecor`) — 가방을 거치지 않는다.
+                // 장식 뽑기는 상점에서 사는 즉시 열린다(`drawDecor`) — 창고를 거치지 않는다.
                 // 걸러내지 않으면 영원히 `×0` 인 줄과 영원히 눌리지 않는 「사용」 버튼이 남는다.
                 let items = ShopItem.allCases.filter {
                     !$0.isPassive && $0.seedGuarantee == nil && $0 != .decorBox
@@ -424,7 +450,7 @@ struct BagView: View {
                 switch r {
                 case .ok(let w):
                     if let key = store.lastDecorFound {
-                        flash = "\(DecorIcons.name(key)) 이(가) 나왔어요 — 컬렉션 탭 정원에 놓였어요"
+                        flash = "\(DecorIcons.name(key)) 이(가) 나왔어요 — 도감 탭의 정원에 놓였어요"
                     } else {
                         flash = w > 0 ? "\(item.name) — 물 +\(w.formatted()) mL" : "\(item.name) 사용"
                     }

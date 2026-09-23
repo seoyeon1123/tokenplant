@@ -263,6 +263,76 @@ final class TwoStreamsTests: XCTestCase {
         XCTAssertGreaterThan(b, a, "거름이 아이템 물에는 안 붙었다")
     }
 
+    // MARK: 4.5 연속 사용 선물
+    //
+    // 방아쇠가 **연속 사용일**이다. 달력(설치 후 N일)으로 하면 앱만 켜두고 받을 수 있어서
+    // "시간이 아니라 토큰을 써야 는다"는 규칙에 구멍이 생긴다.
+
+    /// 마일스톤에 닿으면 **장식 뽑기권**이 가방에 들어온다.
+    /// 물·거름을 주면 총 배율 예산(×2.10)이 깨진다 — 장식은 꾸미기라 예산 밖이다.
+    func testStreakGiftArrivesAtTheMilestone() {
+        var s = freshSave()
+        for d in ["2026-09-01", "2026-09-02", "2026-09-03"] {
+            PlantEngine.credit(&s, raw: 1_000, water: 10, today: d)
+        }
+        XCTAssertEqual(s.streakDays, 3)
+        XCTAssertEqual(s.count(.decorBox), 1, "3일째에 뽑기권이 안 들어왔다")
+        XCTAssertTrue(s.pendingEvents.contains(.streakGift(days: 3)), "선물 이벤트가 안 쌓였다")
+    }
+
+    /// 마일스톤마다 **한 번만**. 안 그러면 3일 쓰고 하루 쉬기를 반복하는 게 제일 이득이 된다.
+    func testStreakGiftIsPaidOncePerMilestone() {
+        var s = freshSave()
+        for d in ["2026-09-01", "2026-09-02", "2026-09-03"] {
+            PlantEngine.credit(&s, raw: 1_000, water: 10, today: d)
+        }
+        let first = s.count(.decorBox)
+        for d in ["2026-09-05", "2026-09-06", "2026-09-07"] {
+            PlantEngine.credit(&s, raw: 1_000, water: 10, today: d)
+        }
+        XCTAssertEqual(s.streakDays, 3, "끊긴 뒤 다시 3일이 안 됐다")
+        XCTAssertEqual(s.count(.decorBox), first, "같은 마일스톤이 두 번 지급됐다")
+    }
+
+    /// 아홉 종을 다 모았으면 뽑기권은 값이 없다 — 고급 씨앗으로 바꾼다.
+    func testStreakGiftFallsBackToSeedWhenDecorComplete() {
+        var s = freshSave()
+        s.decorations = DecorIcons.gachaKeys
+        for d in ["2026-09-01", "2026-09-02", "2026-09-03"] {
+            PlantEngine.credit(&s, raw: 1_000, water: 10, today: d)
+        }
+        XCTAssertEqual(s.count(.decorBox), 0, "다 모았는데 뽑기권을 줬다")
+        XCTAssertEqual(s.pendingSeedGuarantee, .rare, "폴백 씨앗이 안 들어왔다")
+    }
+
+    /// 산 전설 예약 위에 고급을 덮으면 **등급이 내려간다.** 씨앗 구매에서 이미 한 번 겪었다.
+    func testStreakGiftNeverDowngradesAPendingSeed() {
+        var s = freshSave()
+        s.decorations = DecorIcons.gachaKeys
+        s.pendingSeedGuarantee = .legendary
+        for d in ["2026-09-01", "2026-09-02", "2026-09-03"] {
+            PlantEngine.credit(&s, raw: 1_000, water: 10, today: d)
+        }
+        XCTAssertEqual(s.pendingSeedGuarantee, .legendary, "산 전설 위에 고급을 덮었다")
+    }
+
+    /// 선물은 **토큰을 쓴 날**만 센다. `applyWater`(가방의 물)로는 안 는다.
+    func testPouringItemWaterDoesNotEarnGifts() {
+        var s = freshSave()
+        for d in ["2026-09-01", "2026-09-02", "2026-09-03"] {
+            PlantEngine.applyWater(&s, mL: 100, today: d)
+        }
+        XCTAssertEqual(s.streakDays, 0, "아이템 물로 스트릭이 올랐다")
+        XCTAssertEqual(s.count(.decorBox), 0, "아이템 물로 선물을 받았다")
+    }
+
+    func testDaysToNextGift() {
+        XCTAssertEqual(PlantBalance.daysToNextGift(streak: 0), 3)
+        XCTAssertEqual(PlantBalance.daysToNextGift(streak: 3), 4)
+        XCTAssertEqual(PlantBalance.daysToNextGift(streak: 29), 1)
+        XCTAssertNil(PlantBalance.daysToNextGift(streak: 30), "다 받았는데 다음이 있다")
+    }
+
     // MARK: 5. 화분 두 개
 
     /// 물은 나뉘지 않고 **양쪽에 똑같이** 들어간다.

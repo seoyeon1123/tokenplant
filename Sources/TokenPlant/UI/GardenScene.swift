@@ -94,3 +94,69 @@ struct SceneLayout: Sendable {
     /// 총 슬롯 수 — 티어가 담을 수 있는 그루 수.
     var slotCount: Int { rows.reduce(0) { $0 + $1.xs.count } }
 }
+
+/// 새가 서 있는 자리. 좌표 튜플이 아니라 타입으로 둔다 — 뷰가 `onChange` 로
+/// "자리가 바뀌었다"를 알아채야 하고, 튜플은 `Equatable` 이 아니다.
+struct BirdSpot: Equatable, Sendable {
+    var x: Int
+    /// 바닥 기준선. 스프라이트는 이 줄에서 위로 16칸 올려 그린다.
+    var y: Int
+}
+
+/// 새가 지금 어디에 어떤 자세로 있는가. `GardenComposer` 는 이걸 그대로 그린다.
+struct BirdPose: Equatable, Sendable {
+    var x: Int
+    var y: Int
+    /// `BirdIcon.perched` / `.flying` / `.pecking`
+    var art: Int
+    /// 왼쪽을 보고 있는가. 스프라이트는 **오른쪽을 보고 한 장만** 그렸다 —
+    /// 좌우 반전은 그릴 때 칸 번호를 뒤집으면 되는데, 두 벌을 그리면 한쪽만 고치는 날이 온다.
+    var facingLeft = false
+}
+
+/// 새 한 마리의 동선. **순수 함수다** — 목표 자리와 몇 프레임 지났는지만 주면 자세가 나온다.
+///
+/// 상태를 뷰에 두지 않은 이유: 정원 창과 도감 미니뷰가 둘 다 새를 그리는데,
+/// 움직이는 규칙을 양쪽에 따로 쓰면 두 화면의 새가 다르게 논다.
+enum BirdFlight {
+    /// 날아와 내려앉기까지. 5fps 라 8프레임이면 1.6초.
+    static let landing = 8
+    /// 내려앉은 뒤 한 바퀴. 5fps 라 8초.
+    static let idleCycle = 40
+
+    /// `from` 이 nil 이면 **화면 밖**에서 날아온다 — 정원을 열 때마다 새가 한 번 들어온다.
+    /// 모이통을 끌어다 놓으면 직전 자리에서 새 자리로 날아간다(그게 `from` 이다).
+    static func pose(to: BirdSpot, from: BirdSpot?, elapsed: Int, width: Int) -> BirdPose {
+        if elapsed < landing {
+            let start = from ?? offscreen(to: to, width: width)
+            let t = Double(min(max(elapsed + 1, 0), landing)) / Double(landing)
+            // 끝에서 느려진다. 등속이면 벽에 부딪히듯 딱 멈춰서 날아온 게 아니라 순간이동으로 보인다.
+            let ease = 1 - (1 - t) * (1 - t)
+            return BirdPose(x: lerp(start.x, to.x, ease),
+                            y: lerp(start.y, to.y, ease),
+                            art: BirdIcon.flying,
+                            facingLeft: to.x < start.x)
+        }
+        // 앉은 뒤: 대체로 가만히 있다가 두 번 쪼고, 한 번 폴짝 뛴다.
+        let t = ((elapsed - landing) % idleCycle + idleCycle) % idleCycle
+        let art: Int
+        switch t {
+        case 12...14, 18...20: art = BirdIcon.pecking
+        case 32: art = BirdIcon.flying
+        default: art = BirdIcon.perched
+        }
+        // 내려앉은 뒤에도 **날아온 방향 그대로** 본다. 착지하는 순간 고개가 홱 돌면
+        // 날아온 게 아니라 다른 새로 바뀐 것처럼 보인다.
+        let start = from ?? offscreen(to: to, width: width)
+        return BirdPose(x: to.x, y: to.y, art: art, facingLeft: to.x < start.x)
+    }
+
+    /// 첫 등장 자리 — 목표가 왼쪽에 있으면 오른쪽 밖에서, 오른쪽에 있으면 왼쪽 밖에서 온다.
+    private static func offscreen(to: BirdSpot, width: Int) -> BirdSpot {
+        BirdSpot(x: to.x < width / 2 ? width + 4 : -(BirdIcon.size + 4), y: to.y - 16)
+    }
+
+    private static func lerp(_ a: Int, _ b: Int, _ t: Double) -> Int {
+        Int((Double(a) + (Double(b) - Double(a)) * t).rounded())
+    }
+}
