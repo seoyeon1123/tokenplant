@@ -75,6 +75,15 @@ final class AppModel {
     // 때리고(네트워크) codex 는 `app-server` 프로세스를 띄운다. 둘을 같은 30초에 묶어뒀더니
     // 하루 2,880번을 보내 **429(조회 제한)** 를 받았고, 화면에는 "한도 조회가 제한됐어요"만
     // 남았다. 5시간 창의 사용률에 30초 해상도는 아무 의미가 없다.
+    /// 지금 갱신이 언제 시작됐나. **감시견용이다.**
+    ///
+    /// `isRefreshing` 은 래치인데 끝에서만 풀렸다. 한 번 걸리면 이후 모든 갱신이
+    /// 첫 줄에서 되돌아가고 앱이 조용히 죽는다 — 화면은 멀쩡한 숫자를 계속 보여주므로
+    /// 아무도 모른다. 실제로 그렇게 하루를 잃었다(세이브가 15:06 에서 멈춰 있었다).
+    private var refreshStartedAt: Date?
+    /// 이만큼 붙잡혀 있으면 놓아준다. 30초 주기의 세 배 — 느린 디스크에 걸려도 넉넉하다.
+    private static let refreshWatchdog: TimeInterval = 90
+
     private var lastLimitsAt: Date?
     /// 429 뒤 쉬는 시간. 성공하면 0 으로 돌아간다.
     private var limitsBackoff: TimeInterval = 0
@@ -106,11 +115,22 @@ final class AppModel {
     }
 
     func refresh() {
+        // 붙잡힌 지 오래됐으면 놓아준다. 멈춘 갱신 하나가 앱 전체를 영원히 멈추는 것보다
+        // 같은 일을 두 번 하는 게 싸다(`store.update` 는 프로바이더 기준값으로 델타를
+        // 재므로 두 번 들어와도 이중 적립이 안 된다).
+        if isRefreshing, let started = refreshStartedAt,
+           Date().timeIntervalSince(started) > Self.refreshWatchdog {
+            isRefreshing = false
+        }
         guard !isRefreshing else { return }
         isRefreshing = true
+        refreshStartedAt = Date()
         let today = DayKey.make(Date())
 
         Task {
+            // 어느 경로로 빠져나가도 래치를 푼다.
+            defer { isRefreshing = false }
+
             // 설치 직후 딱 한 번, 과거 14일을 거슬러 읽어 "하루가 얼마인가"를 먼저 잡는다.
             // 이게 없으면 첫 며칠 동안 가격표가 남의 기본값으로 환산된다.
             if store.needsBackfill {
@@ -129,23 +149,25 @@ final class AppModel {
                 ?? (snapshot.byProvider.isEmpty && snapshot.skippedFiles > 0
                     ? "로그 \(snapshot.skippedFiles)개를 읽지 못했어요" : nil)
 
-            // 한도 조회는 물 적립과 분리해 **뒤에** 돌린다. Keychain·프로세스·네트워크를 타서
-            // 실패가 흔하고 느리다 — 여기에 성장을 묶으면 한도를 못 읽는 날 화분이 멈춘다.
-            //
-            // 그리고 **매번 돌리지 않는다.** 건너뛴 회차는 직전 값을 그대로 쓴다 —
-            // 한도 창은 5시간·주 단위라 5분 전 값이 지금 값과 사실상 같다.
-            if shouldReadLimits {
-                lastLimitsAt = Date()
-                let limits = await LimitsReader.read()
-                store.applyLimits(limits)
-                limitsBackoff = limits.rateLimited
-                    ? min(max(Self.limitsFirstBackoff, limitsBackoff * 2), Self.limitsMaxBackoff)
-                    : 0
-            }
-
             lastRefresh = Date()
-            isRefreshing = false
         }
+
+        // 한도 조회는 **따로 돈다.** 주석에는 "성장을 묶으면 안 된다"고 적어놓고
+        // 같은 Task 안에 순서대로 넣어뒀었다 — 그러면 묶인 것이다. codex 프로세스가
+        // 한 번 안 끝나면 그 뒤의 `isRefreshing = false` 까지 막혀서 화분이 멈춘다.
+        // 물길과 한도는 서로를 기다리지 않아야 한다.
+        Task { await refreshLimits() }
+    }
+
+    /// 한도 창 조회. 실패해도 성장에는 아무 영향이 없다.
+    private func refreshLimits() async {
+        guard shouldReadLimits else { return }
+        lastLimitsAt = Date()
+        let limits = await LimitsReader.read()
+        store.applyLimits(limits)
+        limitsBackoff = limits.rateLimited
+            ? min(max(Self.limitsFirstBackoff, limitsBackoff * 2), Self.limitsMaxBackoff)
+            : 0
     }
 }
 
@@ -242,7 +264,11 @@ struct PopoverRoot: View {
             .buttonStyle(.borderless)
             .disabled(model.isRefreshing)
 
-            Text(refreshLabel).font(.system(size: 10)).foregroundStyle(.tertiary)
+            // 오래 멈춰 있으면 **눈에 띄어야** 한다. 흐린 회색 "1523분 전" 은 아무도 안 읽는다.
+            Text(refreshLabel)
+                .font(.system(size: 10, weight: isStale ? .medium : .regular))
+                .foregroundStyle(isStale ? Color.orange : Color.secondary.opacity(0.6))
+                .help(isStale ? "갱신이 멈춰 있어요. 새로고침을 눌러보세요." : "마지막으로 로그를 읽은 시각")
 
             Spacer()
 
@@ -285,10 +311,20 @@ struct PopoverRoot: View {
         .fixedSize()
     }
 
+    /// 5분 넘게 안 읽혔으면 뭔가 잘못된 것이다 — 주기는 30초다.
+    private var isStale: Bool {
+        guard let t = model.lastRefresh else { return false }
+        return Date().timeIntervalSince(t) > 300
+    }
+
+    /// 분 단위로만 찍으면 "1523분 전" 이 된다. 읽을 수 없는 숫자는 경고가 아니다.
     private var refreshLabel: String {
         guard let t = model.lastRefresh else { return "읽는 중" }
         let secs = Int(Date().timeIntervalSince(t))
-        return secs < 60 ? "\(secs)초 전" : "\(secs / 60)분 전"
+        if secs < 60 { return "\(secs)초 전" }
+        if secs < 3_600 { return "\(secs / 60)분 전" }
+        if secs < 86_400 { return "\(secs / 3_600)시간 전" }
+        return "\(secs / 86_400)일 전"
     }
 }
 

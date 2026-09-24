@@ -60,6 +60,7 @@ final class PlantStore {
         if let data = try? Data(contentsOf: url),
            let decoded = try? JSONDecoder().decode(PlantSave.self, from: data) {
             save = decoded
+            lastWritten = data
         }
         // 첫 실행이면 씨앗을 심는다. 화분이 비어 있으면 게이지도 상태 문구도 그릴 게 없다.
         if save.pot == nil {
@@ -68,9 +69,21 @@ final class PlantStore {
         }
     }
 
+    /// 마지막으로 **실제로 쓴** 바이트. 같은 내용을 또 쓰지 않으려고 들고 있는다.
+    private var lastWritten: Data?
+
+    /// 호출부는 마음껏 부르면 된다 — 바뀐 게 없으면 여기서 안 쓴다.
+    ///
+    /// 예전엔 호출부가 "지갑이 변했을 때만" 부르게 돼 있었다. 그런데 `ingest` 는 지갑 말고도
+    /// `lastDate` 를 바꾼다. 오늘 읽힌 사용량이 0인 날은 지갑이 그대로라 저장이 안 됐고,
+    /// 파일에는 **어제 날짜가 그대로 남았다.** 앱을 껐다 켜면 또 어제로 시작해서 같은 일을
+    /// 매번 반복했다. 무엇이 바뀌었는지를 호출부가 판단하게 두면 이런 구멍이 계속 생긴다 —
+    /// 바뀐 것을 아는 건 여기다.
     private func persist() {
         guard let data = try? JSONEncoder().encode(save) else { return }
+        guard data != lastWritten else { return }
         try? data.write(to: url, options: .atomic)
+        lastWritten = data
     }
 
     // MARK: 사용량 유입 (포크에서는 UsageStore 가 호출한다)
@@ -80,9 +93,6 @@ final class PlantStore {
     /// 여기 한 번 들어오면 화분이 자란다. 사용자가 누를 건 아무것도 없다 —
     /// 그게 이 앱의 약속이고, 상점은 그 위에 얹는 가속일 뿐이다.
     func update(todayUsageByProvider: [String: TokenDelta], todayDate: String) {
-        let walletBefore = save.rawWallet
-        let rawBefore = save.rawEarnedTotal
-
         PlantEngine.noteThirst(&save, today: todayDate)
         PlantEngine.ingest(&save, todayByProvider: todayUsageByProvider, today: todayDate, now: clock())
 
@@ -91,9 +101,9 @@ final class PlantStore {
         todayRaw = snapshot.raw
         todayWater = PlantBalance.water(from: snapshot)
 
-        if save.rawWallet != walletBefore || save.rawEarnedTotal != rawBefore {
-            persist()
-        }
+        // 조건 없이 부른다. 무엇이 바뀌었는지는 `persist` 가 바이트로 판단한다 —
+        // 여기서 지갑만 보다가 `lastDate` 변경을 통째로 흘렸다.
+        persist()
         // 목표 재조정은 **갱신마다** 다시 시도한다.
         //
         // 백필 안에서 한 번만 돌렸을 때 구멍이 있었다: 설치 시점에 로그가 아예 없는 사람

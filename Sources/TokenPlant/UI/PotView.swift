@@ -257,11 +257,20 @@ struct PotView: View {
         }
     }
 
-    private var gaugeLeft: String { "\(Int(shownWater).formatted()) mL" }
+    // 막대와 **같은 것**을 말해야 한다.
+    //
+    // 예전엔 왼쪽이 `322,550 mL`(누적), 오른쪽이 `/ 476,892`(다음 단계 문턱)였다.
+    // 나란히 놓이니 분수로 읽혀서 "68% 찼다"로 보이는데, 막대는 이번 **단계** 진행도라
+    // 11% 였다. 둘 다 각자는 맞는데 같이 놓으니 틀린 말이 됐고, 화면은 결국
+    // "토큰을 쓰는데 물이 안 찬다"로 읽혔다. (실제로는 사이클의 42%가 차 있었다.)
+    //
+    // 그래서 `/` 를 없앤다. 분수로 안 보이면 오해할 여지가 없다.
+    // 누적은 이 앱의 보람이라 남기고, 오른쪽은 문턱 대신 **남은 양**을 말한다.
+    private var gaugeLeft: String { "총 \(Int(shownWater).formatted()) mL" }
 
     private var gaugeRight: String {
-        guard let next = pot?.nextThreshold else { return "만렙" }
-        return "/ \(next.formatted())"
+        guard let left = store.waterToNext(slot) else { return "만렙" }
+        return "다음까지 \(left.formatted()) mL"
     }
 
     /// 이 화분의 목표. 아직 안 심었으면 지금 심으면 잡힐 목표를 미리 보여준다.

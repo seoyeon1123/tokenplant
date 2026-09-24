@@ -348,10 +348,33 @@ def check_shop_icons():
     # 한도 조회가 30초 틱에 다시 묶이면 안 된다. 한 번 그렇게 묶여서 하루 2,880번을
     # usage 엔드포인트에 보냈고 429 를 받았다 — 화면에는 "한도 조회가 제한됐어요"만 남는다.
     app = read("TokenPlantApp.swift")
-    if "if shouldReadLimits {" not in app:
+    if "guard shouldReadLimits else { return }" not in app:
         bad("TokenPlantApp", "한도 조회에 주기 제한이 없다 — 30초마다 네트워크와 프로세스를 때린다")
+    # 한도 조회가 성장 경로와 **같은 Task** 에 있으면, codex 프로세스가 한 번 안 끝날 때
+    # `isRefreshing` 이 안 풀려서 앱이 조용히 멈춘다. 실제로 하루를 잃었다.
+    if "Task { await refreshLimits() }" not in app:
+        bad("TokenPlantApp", "한도 조회가 성장 경로에 묶여 있다 — 한 번 막히면 화분이 멈춘다")
+    if "defer { isRefreshing = false }" not in app:
+        bad("TokenPlantApp", "isRefreshing 래치를 defer 로 안 푼다 — 한 번 걸리면 영원히 갱신이 막힌다")
+    if "refreshWatchdog" not in app:
+        bad("TokenPlantApp", "멈춘 갱신을 풀어줄 감시견이 없다")
     if "limits.rateLimited" not in app:
         bad("TokenPlantApp", "429 를 받아도 안 쉰다 — 같은 주기로 계속 때리면 제한이 안 풀린다")
+
+    # 게이지 라벨은 막대와 **같은 것**을 말해야 한다. 누적 물과 다음 단계 문턱을
+    # `/` 로 이어 붙였더니 분수로 읽혀서, 막대(단계 진행도 11%)와 숫자(68%처럼 보임)가
+    # 정반대를 가리켰다. 사용자는 "물이 안 찬다"로 읽었다.
+    pv = read("UI/PotView.swift")
+    if "stageProgress" in pv and '"/ \\(' in pv:
+        bad("PotView", "게이지 라벨이 분수로 읽힌다 — 막대는 단계 진행도인데 숫자는 누적/문턱이다")
+
+    # 저장 여부를 **호출부가** 판단하면 구멍이 생긴다. 지갑만 보다가 `lastDate` 변경을
+    # 통째로 흘려서, 오늘 사용량이 0인 날 세이브가 어제 날짜에 얼어붙었다.
+    ps = read("Core/PlantStore.swift")
+    if "guard data != lastWritten else { return }" not in ps:
+        bad("PlantStore", "persist 가 내용 변화를 스스로 안 본다 — 호출부가 조건을 들고 있으면 또 새어나간다")
+    if "save.rawWallet != walletBefore" in ps:
+        bad("PlantStore", "지갑이 변할 때만 저장한다 — lastDate 같은 변경이 안 남는다")
 
     sv = read("UI/ShopView.swift")
     if "새가 찾아와" not in sv:
