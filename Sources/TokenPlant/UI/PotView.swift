@@ -27,6 +27,10 @@ struct PotView: View {
     @State private var showStages = false
     /// 눌렀는데 막혔을 때의 이유. nil 이면 안 보인다.
     @State private var tapNote: String?
+    /// 이름 붙이기 칸. `store.rename` 은 진작 있었는데 부르는 화면이 없어서
+    /// 명패의 "붙인 이름"은 아무도 채울 수 없었다.
+    @State private var renaming = false
+    @State private var nameDraft = ""
 
     private var spriteSide: CGFloat { compact ? 68 : 96 }
 
@@ -55,14 +59,10 @@ struct PotView: View {
                 PotQuickSlots(store: store)
             }
         }
-        .onAppear {
-            shownWater = Double(pot?.water ?? 0)
-            lastCelebrationSeq = store.celebrationSeq
-            lastItemSeq = store.itemEffectSeq
-            // 기준값을 잡은 **뒤에** 대기열을 비운다. 순서가 뒤집히면 `onChange` 가
-            // 안 터져서, 닫아둔 동안 자란 결과를 영영 못 본다.
-            store.pickCelebration()
-        }
+        .onAppear(perform: arm)
+        // 창을 다시 열 때 `onAppear` 가 안 불려도 같은 일을 한다. 둘 다 불려도 괜찮다 —
+        // 두 번째 `pickCelebration` 은 빈 대기열이라 아무것도 안 한다.
+        .onChange(of: store.popoverOpenSeq) { _, _ in arm() }
         .onChange(of: store.celebrationSeq) { _, seq in
             guard seq != lastCelebrationSeq else { return }
             lastCelebrationSeq = seq
@@ -71,6 +71,8 @@ struct PotView: View {
         .onChange(of: store.itemEffectSeq) { _, seq in
             guard seq != lastItemSeq else { return }
             lastItemSeq = seq
+            // 영양제는 한 그루에만 들어간다 — 두 화분이 같이 빛나면 둘 다 받은 것처럼 읽힌다.
+            if store.itemEffect == .nutrient, store.itemEffectSlot != slot { return }
             playItemEffect(store.itemEffect)
         }
         .onChange(of: pot?.water ?? 0) { _, target in
@@ -78,6 +80,18 @@ struct PotView: View {
                 shownWater = Double(target)
             }
         }
+    }
+
+    /// 열릴 때 할 일. 기준값을 잡은 **뒤에** 대기열을 비운다 — 순서가 뒤집히면 `onChange` 가
+    /// 안 터져서, 닫아둔 동안 자란 결과를 영영 못 본다.
+    private func arm() {
+        // 팝오버를 다시 열면 지난 경고를 지운다. 뷰가 살아 있어서, 어젯밤의
+        // "오늘 물은 다 줬어요" 가 다음 날 아침에도 주황색으로 남아 있었다.
+        tapNote = nil
+        shownWater = Double(pot?.water ?? 0)
+        lastCelebrationSeq = store.celebrationSeq
+        lastItemSeq = store.itemEffectSeq
+        store.pickCelebration()
     }
 
     // MARK: 스프라이트
@@ -103,6 +117,12 @@ struct PotView: View {
         .frame(width: spriteSide, height: spriteSide)
         .contentShape(Rectangle())
         .onTapGesture { tapPlant() }
+        // 탭 제스처는 VoiceOver 로는 안 눌린다 — 버튼으로 알리고 같은 동작을 붙인다.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(pot?.nickname ?? store.species(slot).name) 화분")
+        .accessibilityHint(tapHelp)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { tapPlant() }
         // 상한에 걸렸을 때도 "물 주기" 라고 적혀 있었다. 눌러도 아무 일이 안 일어나는데
         // 그렇게 쓰면 고장으로 읽힌다 — 옆 퀵 슬롯 버튼은 같은 상황에서 이미 비활성인데
         // 스프라이트만 누르면 되는 것처럼 보여서 둘이 서로 모순이었다.
@@ -193,7 +213,20 @@ struct PotView: View {
     private var summary: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 5) {
-                Text(store.species(slot).name).font(.system(size: 13, weight: .semibold))
+                // 붙인 이름이 있으면 그게 주인공이다 — 정원 명패와 같은 규칙.
+                Text(pot?.nickname ?? store.species(slot).name).font(.system(size: 13, weight: .semibold))
+                    .lineLimit(1)
+                Button {
+                    nameDraft = pot?.nickname ?? ""
+                    renaming = true
+                } label: {
+                    Image(systemName: "pencil").font(.system(size: 9))
+                }
+                .accessibilityLabel("이름 붙이기")
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+                .help("이름 붙이기 — 정원으로 옮기면 명패에 남아요")
+                .popover(isPresented: $renaming, arrowEdge: .bottom) { renameField }
                 if pot?.isShiny == true {
                     Text("행운").font(.system(size: 9, weight: .medium))
                         .padding(.horizontal, 5).padding(.vertical, 1)
@@ -205,7 +238,8 @@ struct PotView: View {
                         .background(Capsule().fill(Color.green.opacity(0.20)))
                 }
             }
-            Text("Lv.\((pot?.stageIndex ?? 0) + 1) \(store.stageName(slot))")
+            Text((pot?.nickname != nil ? "\(store.species(slot).name) · " : "")
+                 + "Lv.\((pot?.stageIndex ?? 0) + 1) \(store.stageName(slot))")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
             // 상태 문구는 저장 전체에 하나뿐이라(시듦·오늘 물) 축소판 두 벌에 같은 줄을 쓰면 중복이다.
             if !compact {
@@ -218,15 +252,50 @@ struct PotView: View {
     }
 
 
+    private var renameField: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("이름 붙이기").font(.system(size: 11, weight: .semibold))
+            TextField(store.species(slot).name, text: $nameDraft)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 180)
+                .onSubmit(commitName)
+            HStack {
+                Text("비우면 종 이름으로 돌아가요").font(.system(size: 9)).foregroundStyle(.tertiary)
+                Spacer()
+                Button("저장", action: commitName).controlSize(.small).keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(10)
+    }
+
+    private func commitName() {
+        store.rename(String(nameDraft.prefix(20)), slot: slot)
+        renaming = false
+    }
+
     // MARK: 게이지
 
     private var gauge: some View {
         VStack(alignment: .leading, spacing: 5) {
-            HStack {
-                Text(gaugeLeft).font(.system(size: 10, design: .monospaced))
-                Spacer()
-                Text(gaugeRight).font(.system(size: 10, design: .monospaced))
+            // 두 그루(축소판)는 한 칸이 약 140pt 라 "총 36,848 mL" + "다음까지 3,000 mL" 가 한 줄에
+            // 안 들어가서 줄이 바뀌거나 잘렸다. 축소판은 두 줄로 쌓고, 어느 쪽이든 넘치면 글자를 줄인다.
+            Group {
+                if compact {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(gaugeLeft)
+                        Text(gaugeRight)
+                    }
+                } else {
+                    HStack {
+                        Text(gaugeLeft)
+                        Spacer(minLength: 6)
+                        Text(gaugeRight)
+                    }
+                }
             }
+            .font(.system(size: 10, design: .monospaced))
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
             .foregroundStyle(.secondary)
 
             GeometryReader { geo in
@@ -240,6 +309,12 @@ struct PotView: View {
             // 지금 어디쯤인지 보고 싶을 때 — 게이지를 누르면 10단계 전체가 열린다.
             .contentShape(Rectangle())
             .onTapGesture { showStages.toggle() }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("성장 게이지")
+            .accessibilityValue("다음 단계까지 \(Int((store.stageProgress(slot) * 100).rounded()))%")
+            .accessibilityHint("10단계 전체 보기")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { showStages.toggle() }
             // 눌리는 줄 아무 데도 안 적혀 있었다 — 10단계 표가 우연히만 열렸다.
             .help("눌러서 10단계 전체 보기")
             .popover(isPresented: $showStages, arrowEdge: .bottom) { stageList }
@@ -319,7 +394,7 @@ struct PotView: View {
     /// 직접 돌리면 화분이 두 개일 때 누른 쪽만 움직인다.
     private var tapHelp: String {
         if store.save.count(.water) <= 0 { return "토큰을 쓰면 저절로 자라요" }
-        if store.waterUsesLeftToday <= 0 { return "오늘 물은 다 줬어요 — 내일 또 줄 수 있어요" }
+        if let why = store.blockReason(.water) { return why }
         return "물 주기 — 오늘 \(store.waterUsesLeftToday)번 더 (창고에 \(store.save.count(.water))개)"
     }
 
@@ -464,15 +539,7 @@ struct PotQuickSlots: View {
     var body: some View {
         HStack(spacing: 6) {
             ForEach(items, id: \.self) { item in
-                Button {
-                    _ = store.use(item)
-                } label: {
-                    HStack(spacing: 3) {
-                        ShopItemIcon(item: item, pixelSize: 1,
-                                     dimmed: store.save.count(item) == 0)
-                        Text(label(item)).font(.system(size: 10))
-                    }
-                }
+                slotButton(item)
                 .controlSize(.small)
                 .buttonStyle(.bordered)
                 // 물만 색을 준다. `.borderedProminent` 를 삼항으로 고르면 두 스타일이
@@ -484,6 +551,32 @@ struct PotQuickSlots: View {
 
             waterAllowance
             Spacer()
+        }
+    }
+
+    /// 영양제는 그루에 기록되는 품목이라, 화분이 둘이면 **어느 그루에** 줄지 고른다.
+    /// 물·거름은 저장 전체에 걸려서 한 번 누르면 된다.
+    @ViewBuilder
+    private func slotButton(_ item: ShopItem) -> some View {
+        let content = HStack(spacing: 3) {
+            ShopItemIcon(item: item, pixelSize: 1, dimmed: store.save.count(item) == 0)
+            Text(label(item)).font(.system(size: 10))
+        }
+        if item == .nutrient, store.slotCount == 2 {
+            Menu {
+                ForEach(store.nutrientSlots, id: \.self) { slot in
+                    Button("\(slot + 1)번 · \(store.species(slot).name) +\((store.nutrientGain(slot) ?? 0).formatted()) mL") {
+                        _ = store.use(.nutrient, slot: slot)
+                    }
+                }
+            } label: { content }
+            // 기본 메뉴 모양은 `.bordered` 가 안 먹고 화살표만큼 넓어서, 옆 버튼들과 모양·폭이 달랐다.
+            // 버튼 모양 메뉴로 두면 바깥의 버튼 스타일을 그대로 받는다.
+            .menuStyle(.button)
+            .menuIndicator(.hidden)
+            .fixedSize()
+        } else {
+            Button { _ = store.use(item) } label: { content }
         }
     }
 
@@ -510,42 +603,26 @@ struct PotQuickSlots: View {
                            : "오늘은 다 줬어요 — 안 쓴 토큰은 지갑에 그대로 남습니다")
     }
 
-    /// 지금 못 쓰는 품목. 이유는 저마다 다르지만 버튼을 막는 건 같다.
-    private func blocked(_ item: ShopItem) -> Bool {
-        switch item {
-        // 이제 남은 기간에 이어 붙으므로 돌고 있어도 쓸 수 있다. 천장에 닿았을 때만 막는다.
-        case .fertilizer: return store.fertilizerDaysLeft >= PlantBalance.fertilizerMaxDays
-        case .water: return store.waterUsesLeftToday <= 0
-        case .nutrient:
-            // 그루당 횟수만 봤더니, 이미 다 자란 그루(이식 대기)에서 버튼이 켜져 있었다.
-            // 누르면 `.noEffect("이미 다 자랐어요")` 가 오고 화면엔 아무 일도 안 일어난다.
-            // 창고 쪽(`BagView.blockReason`)은 이 경우를 막고 있어서 두 화면이 달랐다.
-            guard store.nutrientAvailable(0) else { return true }
-            guard let p = store.pot else { return true }
-            return Nutrient.water(currentWater: p.water, cycle: p.cycleWater) <= 0
-        default: return false
-        }
-    }
+    /// 지금 못 쓰는 품목. 판정은 창고와 **같은 곳**(`PlantStore.blockReason`)에서 온다 —
+    /// 두 화면이 따로 판정하던 때는 한쪽만 켜져 있다가 누르면 거절되는 일이 반복됐다.
+    private func blocked(_ item: ShopItem) -> Bool { store.blockReason(item) != nil }
 
     private func help(_ item: ShopItem) -> String {
         guard store.save.count(item) > 0 else { return "\(item.name) — 상점에서 살 수 있어요" }
         switch item {
         case .water:
-            let left = store.waterUsesLeftToday
-            guard left > 0 else {
-                return "오늘은 다 줬어요 — 안 쓴 토큰은 지갑에 그대로 남습니다"
-            }
-            return "+\(store.waterML.formatted()) mL · 오늘 \(left)번 남음"
+            if let why = store.blockReason(item) { return why }
+            return "+\(store.waterML.formatted()) mL · 오늘 \(store.waterUsesLeftToday)번 남음"
         case .fertilizer:
-            return blocked(item) ? "이미 돌고 있어요 — 끝나고 쓰면 7일이 온전히 붙습니다"
-                                 : "\(PlantBalance.fertilizerDays)일간 들어오는 물 +\(PlantBalance.fertilizerBonusPercent)%"
+            if let why = store.blockReason(item) { return why }
+            return "\(PlantBalance.fertilizerDays)일간 들어오는 물 +\(PlantBalance.fertilizerBonusPercent)%"
         case .nutrient:
-            guard let p = store.pot else { return "남은 거리 −\(Nutrient.reducePercent)%" }
-            guard store.nutrientAvailable(0) else {
-                return "이 그루엔 이미 줬어요 — 다음 그루에 쓸 수 있어요"
+            let slots = store.nutrientSlots
+            guard !slots.isEmpty else {
+                return "줄 수 있는 그루가 없어요 — 그루마다 한 번이고, 다 자란 그루엔 안 들어가요"
             }
-            return "지금 쓰면 +\(Nutrient.water(currentWater: p.water, cycle: p.cycleWater).formatted()) mL"
-                 + " · 한 그루에 한 번뿐이에요"
+            if store.slotCount == 2 { return "어느 화분에 줄지 골라요 · 한 그루에 한 번뿐이에요" }
+            return "지금 쓰면 +\((store.nutrientGain(0) ?? 0).formatted()) mL · 한 그루에 한 번뿐이에요"
         default: return item.name
         }
     }

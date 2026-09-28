@@ -274,8 +274,9 @@ final class UsageReaderTests: XCTestCase {
         XCTAssertEqual(d.cacheRead, 5_000)
     }
 
-    /// 누적값이 아예 없는 세션 파일(막 시작한 세션)은 skipped 로 센다.
-    func testFileWithoutTotalUsageCountsAsSkipped() throws {
+    /// 누적값이 아예 없는 세션 파일(막 시작한 세션)은 **못 읽은 게 아니다** — skipped 로 안 센다.
+    /// 셌더니 Codex 만 쓰는 사람에게 세션을 열 때마다 "로그 1개를 읽지 못했어요"가 떴다.
+    func testFileWithoutTotalUsageIsNotSkipped() throws {
         let parts = today.split(separator: "-")
         try write([#"{"type":"session_meta","payload":{}}"#],
                   to: "sessions/\(parts[0])/\(parts[1])/\(parts[2])/empty.jsonl")
@@ -283,7 +284,7 @@ final class UsageReaderTests: XCTestCase {
         let (d, skipped) = UsageReader.readCodex(today: today,
                                                  root: tmp.appendingPathComponent("sessions"))
         XCTAssertTrue(d.isZero)
-        XCTAssertEqual(skipped, 1)
+        XCTAssertEqual(skipped, 0)
     }
 
     func testMissingDayFolderIsZero() {

@@ -16,9 +16,13 @@ enum LoginItem {
             && Bundle.main.bundleURL.pathExtension == "app"
     }
 
+    /// **등록돼 있나**로 본다. 승인 대기(`requiresApproval`)도 켜진 것으로 친다 —
+    /// 예전엔 `.enabled` 만 봐서 등록은 됐는데 토글은 꺼짐으로 보였고, 눌러도 다시 등록만 돼서
+    /// 끌 방법이 없었다. 승인이 남았다는 건 `needsApproval` 안내문이 따로 말한다.
     static var isEnabled: Bool {
         guard isAvailable else { return false }
-        return SMAppService.mainApp.status == .enabled
+        let status = SMAppService.mainApp.status
+        return status == .enabled || status == .requiresApproval
     }
 
     /// 시스템 설정에서 사용자가 직접 승인해야 하는 상태. 안내 문구가 달라진다.

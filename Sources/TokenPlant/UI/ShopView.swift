@@ -18,6 +18,13 @@ struct ShopView: View {
         VStack(alignment: .leading, spacing: 10) {
             header
 
+            // 결과 문구는 **목록 위에** 둔다. 목록 아래 두었더니 팝오버(탭 내용 약 340pt)에서
+            // 머리말 + 목록 300pt 를 넘겨 화면 밖으로 밀렸고, 「구매」를 눌러도 반응이 없어 보였다.
+            if let f = flash {
+                Text(f).font(.system(size: 10)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     ForEach(categories, id: \.self) { cat in
@@ -34,11 +41,9 @@ struct ShopView: View {
                     }
                 }
             }
-            .frame(maxHeight: 300)
-
-            if let f = flash {
-                Text(f).font(.system(size: 10)).foregroundStyle(.secondary)
-            }
+            // 머리말(약 50pt)과 결과 문구를 더해도 탭 내용 영역 안에 들어가는 높이.
+            // 넘치면 바깥 스크롤이 생겨 스크롤이 두 겹이 된다.
+            .frame(maxHeight: flash == nil ? 270 : 250)
         }
     }
 
@@ -327,8 +332,9 @@ struct ShopView: View {
             // 실제로 20% → 10% 로 내린 뒤 화면은 −20% 라고 계속 말하고 있었고,
             // 같은 문장 안의 mL 값은 10% 로 계산돼서 스스로 모순이었다.
             let pct = Nutrient.reducePercent
-            guard let p = store.pot else { return "남은 거리 −\(pct)%" }
-            let back = Nutrient.water(currentWater: p.water, cycle: p.cycleWater)
+            guard store.pot != nil else { return "남은 거리 −\(pct)%" }
+            // 줄 수 있는 그루 중 가장 많이 들어가는 쪽으로 견준다.
+            let back = store.nutrientSlots.compactMap { store.nutrientGain($0) }.max() ?? 0
             return "남은 거리 −\(pct)% · 한 그루에 한 번"
                  + " · 지금 +\(back.formatted()) mL \(vsWater(item, back))"
 
@@ -378,6 +384,12 @@ struct BagView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            // 결과 문구는 위에 — 아래 두면 목록이 길 때 스크롤해야 보인다.
+            if let f = flash {
+                Text(f).font(.system(size: 10)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             section("소모품") {
                 // 장식 뽑기는 상점에서 사는 즉시 열린다(`drawDecor`) — 창고를 거치지 않는다.
                 // 걸러내지 않으면 영원히 `×0` 인 줄과 영원히 눌리지 않는 「사용」 버튼이 남는다.
@@ -414,10 +426,6 @@ struct BagView: View {
                     }
                 }
             }
-
-            if let f = flash {
-                Text(f).font(.system(size: 10)).foregroundStyle(.secondary)
-            }
         }
     }
 
@@ -445,58 +453,58 @@ struct BagView: View {
                 }
             }
             Spacer()
-            Button("사용") {
-                let r = store.use(item)
-                switch r {
-                case .ok(let w):
-                    if let key = store.lastDecorFound {
-                        flash = "\(DecorIcons.name(key)) 이(가) 나왔어요 — 도감 탭의 정원에 놓였어요"
-                    } else {
-                        flash = w > 0 ? "\(item.name) — 물 +\(w.formatted()) mL" : "\(item.name) 사용"
+            // 영양제는 그루에 기록된다 — 화분이 둘이면 어느 그루에 줄지 고른다.
+            if item == .nutrient, store.slotCount == 2 {
+                Menu("사용") {
+                    ForEach(store.nutrientSlots, id: \.self) { slot in
+                        Button("\(slot + 1)번 · \(store.species(slot).name)") { apply(item, slot: slot) }
                     }
-                case .noEffect(let why): flash = why
-                case .notOwned: flash = "가진 게 없어요"
                 }
+                .controlSize(.small)
+                .fixedSize()
+                .disabled(n == 0 || blocked != nil)
+            } else {
+                Button("사용") { apply(item, slot: 0) }
+                    .controlSize(.small)
+                    .disabled(n == 0 || blocked != nil)
             }
-            .controlSize(.small)
-            .disabled(n == 0 || blocked != nil)
         }
         .padding(.vertical, 2)
     }
 
-    /// 쓸 수 없으면 이유를 적는다 — 회색 버튼만 두면 사용자가 왜인지 모른다.
-    private func blockReason(_ item: ShopItem) -> String? {
-        guard store.save.count(item) > 0 else { return nil }
-        switch item {
-        case .nutrient:
-            guard let p = store.pot else { return nil }
-            return Nutrient.water(currentWater: p.water, cycle: p.cycleWater) > 0 ? nil : "이미 다 자랐어요"
-        case .fertilizer:
-            // 중첩이 아니라 기간 갱신이라, 돌고 있는 동안 쓰면 남은 날이 날아간다.
-            // "이미 돌고 있어요" 로 막았더니 사도 바로 못 쓰는 품목이 됐다.
-            // 이제 이어 붙으므로, 천장(3주)에 닿았을 때만 막는다.
-            return store.fertilizerDaysLeft >= PlantBalance.fertilizerMaxDays
-                ? "\(PlantBalance.fertilizerMaxDays)일치까지 차 있어요" : nil
-        default:
-            return nil
+    private func apply(_ item: ShopItem, slot: Int) {
+        switch store.use(item, slot: slot) {
+        case .ok(let w):
+            if let key = store.lastDecorFound {
+                flash = "\(DecorIcons.name(key)) 이(가) 나왔어요 — 도감 탭의 정원에 놓였어요"
+            } else {
+                flash = w > 0 ? "\(item.name) — 물 +\(w.formatted()) mL" : "\(item.name) 사용"
+            }
+        case .noEffect(let why): flash = why
+        case .notOwned: flash = "가진 게 없어요"
         }
     }
+
+    /// 쓸 수 없으면 이유를 적는다 — 회색 버튼만 두면 사용자가 왜인지 모른다.
+    /// 판정은 퀵 슬롯과 **같은 곳**(`PlantStore.blockReason`)에서 온다.
+    private func blockReason(_ item: ShopItem) -> String? { store.blockReason(item) }
 
     private var fertilizerRow: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack {
                 Text("거름 +\(PlantBalance.fertilizerBonusPercent)%").font(.system(size: 11, weight: .medium))
                 Spacer()
-                Text("\(store.save.fertilizerDaysLeft(now: Date()))일 남음")
+                Text("\(store.save.fertilizerDaysLeft(now: Date()))일 남음 · 최대 \(PlantBalance.fertilizerMaxDays)일")
                     .font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.primary.opacity(0.10))
+                    // 분모는 **천장(21일)** 이다. 7일로 나눴더니 이어 붙인 거름이 칸을 세 배까지 넘쳤다.
                     Capsule().fill(Color.green.opacity(0.7))
                         .frame(width: geo.size.width
-                               * Double(store.save.fertilizerDaysLeft(now: Date()))
-                               / Double(PlantBalance.fertilizerDays))
+                               * min(1, Double(store.save.fertilizerDaysLeft(now: Date()))
+                                        / Double(PlantBalance.fertilizerMaxDays)))
                 }
             }
             .frame(height: 5)

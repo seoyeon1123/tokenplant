@@ -87,7 +87,7 @@ def water_from(d):
 def seed_cycle(s):
     """새 그루 목표를 **한 곳에서** 계산한다 + 환산비율은 실측값을 쓴다."""
     ratio = measured_raw_per_ml(s.daily_raw, s.daily_water) or RAW_PER_ML
-    return cycle_water(daily_rate(s.daily_raw), ratio)
+    return cycle_water(rate_of(s), ratio)
 
 
 def cycle_water(daily_raw, raw_per_ml=None):
@@ -394,23 +394,48 @@ def pruned_daily(daily, today):
     return {k: v for k, v in daily.items() if ddays(k, today) < DAILY_WINDOW}
 
 
-def daily_rate(daily):
+def dshift(key, n):
+    return dk(dparse(key) + timedelta(days=n))
+
+
+def daily_rate(daily, through=None):
     # 최근 창의 달력일 평균. 안 쓴 날도 0으로 센다 — 실제로 쌓이는 속도가 그거다.
+    # 끝은 `through`(오늘). 마지막 기록에서 끝내면 마지막으로 쓴 뒤 쉰 날이 빠진다.
     if not daily:
         return ASSUMED_DAILY_RAW
     keys = sorted(daily)
-    span = ddays(keys[0], keys[-1]) + 1
+    stop = max(keys[-1], through or keys[-1])
+    start = max(keys[0], dshift(stop, -(DAILY_WINDOW - 1)))
+    total = sum(v for k, v in daily.items() if start <= k <= stop)
+    if total <= 0:
+        # 창 안에 쓴 날이 없으면 마지막으로 알던 속도 — 0 이면 모든 값이 1토큰이 된다.
+        span = ddays(keys[0], keys[-1]) + 1
+        if span < DAILY_MIN_DAYS: return ASSUMED_DAILY_RAW
+        return max(1, sum(daily.values()) // span)
+    span = ddays(start, stop) + 1
     if span < DAILY_MIN_DAYS:
         return ASSUMED_DAILY_RAW
-    return max(1, sum(daily.values()) // span)
+    return max(1, total // span)
+
+
+def rate_of(s):
+    """엔진의 `PlantEngine.dailyRate` — 오늘(`last_date`)까지 센다."""
+    return daily_rate(s.daily_raw, s.last_date or None)
+
+
+def active_streak(s, today):
+    """지금 살아 있는 스트릭 — 어제나 오늘 쓴 적이 있어야 이어지는 중이다."""
+    if not s.last_use_day: return s.streak
+    return s.streak if ddays(s.last_use_day, today) <= 1 else 0
 
 
 def baseline_raw_rate(daily, today):
     """**오늘을 뺀** 평균. 기준에 오늘이 있으면 오늘이 끌어내린 평균과 오늘을 견주게 된다."""
-    past = {k: v for k, v in daily.items() if k != today}
+    start = dshift(today, -DAILY_WINDOW)
+    past = {k: v for k, v in daily.items() if start <= k < today}
     keys = sorted(past)
     if not keys: return None
-    span = ddays(keys[0], keys[-1]) + 1
+    span = ddays(keys[0], today)     # 끝은 어제 — 최근에 쉰 날도 센다
     if span < DAILY_MIN_DAYS: return None
     return max(1, sum(past.values()) // span)
 
@@ -431,9 +456,10 @@ def backfill_history(s, by_day, today):
     for day, delta in by_day.items():
         if day == today: continue      # ingest 가 오늘을 적립한다 — 넣으면 두 번 세어진다
         c = delta.clamped()
-        s.daily_raw[day] = s.daily_raw.get(day, 0) + c.raw
+        # 더하지 않고 큰 쪽 — 이미 실시간으로 적은 날에 더하면 그날이 두 배가 된다.
+        s.daily_raw[day] = max(s.daily_raw.get(day, 0), c.raw)
         ml = water_from(c)
-        if ml > 0: s.daily_water[day] = s.daily_water.get(day, 0) + ml
+        if ml > 0: s.daily_water[day] = max(s.daily_water.get(day, 0), ml)
     s.daily_raw = pruned_daily(s.daily_raw, today)
     s.daily_water = pruned_daily(s.daily_water, today)
     s.history_backfilled = True
@@ -442,10 +468,11 @@ def backfill_history(s, by_day, today):
 
 def measured_daily_water(water, today):
     """하루에 실제로 들어간 mL — 상수 환산이 아니라 기록에서 읽는다."""
-    past = {k: v for k, v in water.items() if k != today}
+    start = dshift(today, -DAILY_WINDOW)
+    past = {k: v for k, v in water.items() if start <= k < today}
     keys = sorted(past)
     if not keys: return None
-    span = ddays(keys[0], keys[-1]) + 1
+    span = ddays(keys[0], today)     # 끝은 어제 — 최근에 쉰 날도 센다
     if span < DAILY_MIN_DAYS: return None
     return max(1, sum(past.values()) // span)
 
@@ -455,8 +482,8 @@ def days_to_transplant(s, today):
     if s.pot is None: return None
     remaining = max(0, s.pot.cycle - s.pot.water)
     if remaining <= 0: return 0
-    base = measured_daily_water(s.daily_water, today) or max(1, daily_rate(s.daily_raw) // RAW_PER_ML)
-    per_day = applied(base, s.streak, s.fert_active(today))
+    base = measured_daily_water(s.daily_water, today) or max(1, rate_of(s) // RAW_PER_ML)
+    per_day = applied(base, active_streak(s, today), s.fert_active(today))
     return -(-remaining // max(1, per_day))     # 올림
 
 
@@ -470,7 +497,7 @@ def apply_water(s, ml, today):
     보너스는 여기서 한 번만 곱한다 — 경로마다 규칙이 갈리면 아무도 못 맞춘다.
     """
     if ml <= 0: return 0
-    got = applied(ml, s.streak, s.fert_active(today))
+    got = applied(ml, active_streak(s, today), s.fert_active(today))
     s.water_since += got
     s.last_water_day = today
     grow(s, "pot", got)
@@ -527,7 +554,7 @@ def thirst_level(s, today):
 
 
 def price(s, item):
-    return price_for(item, daily_rate(s.daily_raw))
+    return price_for(item, rate_of(s))
 
 
 def can_buy(s, item):
@@ -551,7 +578,7 @@ def earned_total(s): return s.raw_earned
 def spent_total(s): return s.raw_spent
 
 
-def buy(s, item):
+def buy(s, item, roll=1):
     r = can_buy(s, item)
     if r[0] != "ok": return r
     cost = price(s, item)
@@ -563,8 +590,8 @@ def buy(s, item):
         if item in DECORATION:
             s.decorations.append(item)
         if item == "potSlot" and s.pot2 is None and s.pot is not None:
-            # 목표를 안 넘기면 기본값(legacy 400,000)이 박혀서 둘째 화분만 남의 값을 받는다.
-            s.pot2 = Pot(species=s.pot.species, cycle=seed_cycle(s))
+            # 1번 종을 복제하지 않고 새 씨앗을 뽑는다(목표는 seed_cycle, 보증은 1번 몫이라 안 쓴다).
+            plant_new_seed(s, roll, slot=1)
     else:
         s.inv[item] = s.count(item) + 1
     return ("ok", 0)
@@ -600,7 +627,7 @@ def use(s, item, today, roll=0):
         # 정액. 자동 성장과 같은 길로 들어가 보너스도 똑같이 받는다.
         consume(s, item)
         ratio = measured_raw_per_ml(s.daily_raw, s.daily_water) or RAW_PER_ML
-        return ("ok", apply_water(s, water_ml(daily_rate(s.daily_raw), ratio), today))
+        return ("ok", apply_water(s, water_ml(rate_of(s), ratio), today))
     if item == "fertilizer":
         # **남은 기간에 이어 붙인다.** 배수는 안 겹치고 기간만 는다 —
         # 예전엔 7일이 다시 시작이라 돌고 있는 동안 쓰면 남은 날이 날아갔고,
@@ -621,7 +648,7 @@ def use(s, item, today, roll=0):
         s.pot.nutrient_uses += 1
         # **이 그루에만** — apply_water 를 타면 화분 2에도 공짜로 들어가서
         # "한 그루에 한 번"이 거짓이 되고, 양도 화분 1 기준으로 매겨진다.
-        got = applied(g, s.streak, s.fert_active(today))
+        got = applied(g, active_streak(s, today), s.fert_active(today))
         s.water_since += got
         s.last_water_day = today
         grow(s, "pot", got)

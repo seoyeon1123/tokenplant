@@ -120,17 +120,22 @@ def check_scene():
                 if x < 0 or x + sprite > L["w"]:
                     bad(where, f"x={x} 에서 나무가 오른쪽으로 넘친다 (+{sprite} > {L['w']})")
 
-    # 장식 자리 — GardenView.decorSpots 와 같은 식을 쓴다 (18px 간격 한 줄)
+    # 장식 자리 — GardenView.decorSpots 와 같은 식을 쓴다 (18px 간격, 모자라면 뒤로 한 줄씩)
+    def decor_spots(L, total=12):
+        per_row = max(1, (L["w"] - 6) // 18)
+        rows = (total + per_row - 1) // per_row
+        return [(min(3 + i * 18 + (9 if r % 2 else 0), L["w"] - 16), L["h"] - 2 - r * 5)
+                for r in range(rows) for i in range(per_row)]
     for key, L in layouts.items():
-        count = max(1, (L["w"] - 6) // 18)
-        for i in range(count):
-            x = 3 + i * 18
-            if x + 16 > L["w"]:
-                bad(key, f"장식 {i + 1}번째가 x={x} 에서 오른쪽으로 넘친다")
-    # 마지막 두 티어는 장식 열두 개를 다 담아야 한다 — 못 담으면 뽑아도 안 보인다.
-    for key in ("arbor", "forest"):
-        if key in layouts and max(1, (layouts[key]["w"] - 6) // 18) < 12:
+        spots = decor_spots(L)
+        # **모든** 티어가 열두 개를 다 담아야 한다 — 못 담으면 뽑아도 안 보인다.
+        if len(spots) < 12:
             bad(key, "장식 자리가 12개보다 적다 — 뽑은 장식이 정원에 안 나온다")
+        for i, (x, y) in enumerate(spots):
+            if x < 0 or x + 16 > L["w"]:
+                bad(key, f"장식 {i + 1}번째가 x={x} 에서 옆으로 넘친다")
+            if y - 16 < 0:
+                bad(key, f"장식 {i + 1}번째가 y={y} 에서 위로 넘친다")
 
 
 # ── 2. 계절 팔레트 ─────────────────────────────────────────────
@@ -348,13 +353,23 @@ def check_shop_icons():
     # 한도 조회가 30초 틱에 다시 묶이면 안 된다. 한 번 그렇게 묶여서 하루 2,880번을
     # usage 엔드포인트에 보냈고 429 를 받았다 — 화면에는 "한도 조회가 제한됐어요"만 남는다.
     app = read("TokenPlantApp.swift")
-    if "guard shouldReadLimits else { return }" not in app:
+    # 예외는 사용자가 방금 누른 경우(`allowPrompt`)뿐이다 — 토글 켜기 · 권한 다시 요청.
+    if "allowPrompt || shouldReadLimits else { return }" not in app:
         bad("TokenPlantApp", "한도 조회에 주기 제한이 없다 — 30초마다 네트워크와 프로세스를 때린다")
+    # 키체인은 **켠 사람만** 건드린다. 기본이 켜져 있으면 첫 실행부터 남의 자격증명을
+    # 달라는 그림이 되고, 성장은 거기에 하나도 안 걸려 있다.
+    if "store.save.limitBonusEnabled, allowPrompt || shouldReadLimits" not in app:
+        bad("TokenPlantApp", "한도 보너스가 꺼져 있어도 키체인을 읽는다")
+    eng = read("Core/PlantEngine.swift")
+    if "var limitBonusEnabled = false" not in eng:
+        bad("PlantSave", "한도 보너스 기본값이 꺼짐이 아니다 — 첫 실행에 키체인 창이 뜬다")
     # 한도 조회가 성장 경로와 **같은 Task** 에 있으면, codex 프로세스가 한 번 안 끝날 때
     # `isRefreshing` 이 안 풀려서 앱이 조용히 멈춘다. 실제로 하루를 잃었다.
     if "Task { await refreshLimits() }" not in app:
         bad("TokenPlantApp", "한도 조회가 성장 경로에 묶여 있다 — 한 번 막히면 화분이 멈춘다")
-    if "defer { isRefreshing = false }" not in app:
+    # 세대 조건이 붙어도 된다(`defer { if generation == … { isRefreshing = false } }`) —
+    # 겹친 갱신의 옛 작업이 새 작업의 래치를 풀면 안 되기 때문이다. 보는 건 "defer 가 푼다" 하나다.
+    if not re.search(r"defer \{[^\n]*isRefreshing = false", app):
         bad("TokenPlantApp", "isRefreshing 래치를 defer 로 안 푼다 — 한 번 걸리면 영원히 갱신이 막힌다")
     if "refreshWatchdog" not in app:
         bad("TokenPlantApp", "멈춘 갱신을 풀어줄 감시견이 없다")
@@ -375,6 +390,11 @@ def check_shop_icons():
         bad("PlantStore", "persist 가 내용 변화를 스스로 안 본다 — 호출부가 조건을 들고 있으면 또 새어나간다")
     if "save.rawWallet != walletBefore" in ps:
         bad("PlantStore", "지갑이 변할 때만 저장한다 — lastDate 같은 변경이 안 남는다")
+
+    # 로컬 CLI 로그만 읽는다는 걸 **앱 안에서** 말해야 한다. 안 적으면 웹·앱 사용자는
+    # 하루 종일 Claude 를 쓰고도 화분이 그대로인 걸 보고 고장이라고 결론 낸다.
+    if "맥에 기록이 안 남아서" not in app:
+        bad("TokenPlantApp", "로컬 CLI 로그만 읽는다는 안내가 없다 — 웹·앱 사용자는 고장으로 읽는다")
 
     sv = read("UI/ShopView.swift")
     if "새가 찾아와" not in sv:

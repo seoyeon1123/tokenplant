@@ -375,6 +375,7 @@ final class TwoStreamsTests: XCTestCase {
     func testWindowBonusGoesToTheWalletOnly() {
         var s = freshSave()
         s.windowsSeeded = true
+        s.seenWindowKeys = ["s"]   // 이미 본 창 — 처음 보는 창은 지급 없이 기준만 잡는다
         let before = s.pot!.water
         let w = LimitWindowInfo(key: "s", name: "5시간", kind: .session, utilization: 100)
 

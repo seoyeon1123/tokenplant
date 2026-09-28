@@ -217,12 +217,48 @@ enum PlantBalance {
     static let dailyRawMinDays = 3
 
     /// 최근 창의 **달력일 평균**. 안 쓴 날도 0으로 세는 게 맞다 — 실제로 지갑이 차는 속도가 그거다.
-    static func dailyRawRate(_ daily: [String: Int]) -> Int {
+    ///
+    /// `through` 는 창의 끝(오늘)이다. 예전엔 **마지막 기록**에서 끝냈는데, 기록은 쓴 날에만
+    /// 생기므로 마지막으로 쓴 뒤 쉰 날이 통째로 빠졌다. 9일 매일 10M 쓰고 닷새 쉬면
+    /// 달력 평균은 6.4M 인데 10M 으로 나왔고, 가격·물 양·새 씨앗 목표가 전부 부풀었다.
+    /// nil 이면 예전처럼 마지막 기록에서 끝낸다(날짜를 모르는 호출부용).
+    static func dailyRawRate(_ daily: [String: Int], through end: String? = nil) -> Int {
+        measuredDailyRaw(daily, through: end) ?? assumedDailyRaw
+    }
+
+    /// 측정된 하루 유입. 표본이 모자라면 nil — 그때 호출부는 기본값으로 물러난다.
+    ///
+    /// "측정 중인가"(`PlantStore.dailyRateIsMeasured`)도 **이 함수 하나**로 판단한다.
+    /// 둘을 따로 계산했더니, 4일 전 기록 하나뿐인 사람의 가격은 실측으로 매겨지는데
+    /// 상점 머리말은 "105M 기준 (측정 중)" 이라고 썼다.
+    static func measuredDailyRaw(_ daily: [String: Int], through end: String? = nil) -> Int? {
+        // 끝이 오늘이면 **어제까지만** 본다 — 오늘은 아직 덜 찬 하루다.
+        // 오늘을 하루로 세면 아침엔 분자가 거의 0인데 분모만 하루 늘어서, 설치 3일째 아침 가격이
+        // 저녁보다 33% 쌌다(14일 이력이 있어도 7%). "아침에 사면 싸다"는 공략이 생기고,
+        // 아침에 이식하면 다음 목표도 작게 잡힌다. 지난날만으로 못 재면(설치 직후) 예전처럼 오늘까지 센다.
+        if let end, let yesterday = DayKey.shifted(end, by: -1),
+           let settled = measuredDailyRawCore(daily.filter { $0.key < end }, through: yesterday) {
+            return settled
+        }
+        return measuredDailyRawCore(daily, through: end)
+    }
+
+    private static func measuredDailyRawCore(_ daily: [String: Int], through end: String?) -> Int? {
         let keys = daily.keys.sorted()
-        guard let first = keys.first, let last = keys.last else { return assumedDailyRaw }
-        let span = DayKey.days(from: first, to: last) + 1
-        guard span >= dailyRawMinDays else { return assumedDailyRaw }
-        let total = daily.values.reduce(0, +)
+        guard let first = keys.first, let last = keys.last else { return nil }
+        let stop = max(last, end ?? last)
+        // 창 안의 날만 센다. 오래 쉬면 정리(`prunedDailyRaw`)가 안 돌아 창 밖 기록이 남아 있다.
+        let start = max(first, DayKey.shifted(stop, by: -(dailyRawWindow - 1)) ?? first)
+        let total = daily.filter { $0.key >= start && $0.key <= stop }.values.reduce(0, +)
+        // 창 안에 쓴 날이 하루도 없으면 **마지막으로 알던 속도**를 쓴다. 0 으로 두면
+        // 2주 쉰 사람에게 모든 값이 1토큰이 되어, 쌓아둔 지갑으로 상점을 통째로 산다.
+        guard total > 0 else {
+            let span = DayKey.days(from: first, to: last) + 1
+            guard span >= dailyRawMinDays else { return nil }
+            return max(1, daily.values.reduce(0, +) / span)
+        }
+        let span = DayKey.days(from: start, to: stop) + 1
+        guard span >= dailyRawMinDays else { return nil }
         return max(1, total / span)
     }
 
@@ -231,11 +267,14 @@ enum PlantBalance {
     /// `dailyRawRate` 는 오늘을 포함한다(가격 환산에는 그게 맞다 — 지금 이 순간 하루치가 얼마인가).
     /// 그런데 비교 기준으로 쓰면 아침엔 오늘 몫이 거의 0인데 분모는 오늘을 이미 하루로 세서
     /// 평균이 내려가고, 결국 **오늘이 끌어내린 평균과 오늘을 견주게** 된다.
+    ///
+    /// 끝은 **어제**다 — 마지막 기록에서 끝내면 최근에 쉰 날이 빠져 "평소"가 부푼다.
     static func baselineRawRate(_ daily: [String: Int], today: String) -> Int? {
-        let past = daily.filter { $0.key != today }
+        let windowStart = DayKey.shifted(today, by: -dailyRawWindow) ?? ""
+        let past = daily.filter { $0.key < today && $0.key >= windowStart }
         let keys = past.keys.sorted()
-        guard let first = keys.first, let last = keys.last else { return nil }
-        let span = DayKey.days(from: first, to: last) + 1
+        guard let first = keys.first else { return nil }
+        let span = DayKey.days(from: first, to: today)
         guard span >= dailyRawMinDays else { return nil }
         return max(1, past.values.reduce(0, +) / span)
     }

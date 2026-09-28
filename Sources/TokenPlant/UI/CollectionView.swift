@@ -42,6 +42,7 @@ struct CollectionView: View {
             // 미니뷰도 움직인다. 정원 창은 3그루부터 열리는데 바람개비·고양이·새는 그 전에
             // 나온다 — 여기서 안 돌면 처음 몇 달 동안 움직이는 걸 아무도 못 본다.
             // 이 뷰는 도감 탭이 열려 있을 때만 존재하므로, 탭을 옮기면 저절로 멈춘다.
+            // 팝오버를 닫으면 뷰는 숨기만 하고 살아 있어서 `active` 로 따로 멈춘다.
             GardenCanvas(layout: layout,
                          season: store.save.gardenCount >= 10 ? .current : .byKey("spring"),
                          entries: store.save.garden,
@@ -50,7 +51,8 @@ struct CollectionView: View {
                          positions: store.save.decorPositions,
                          currentPotStage: store.pot?.stageIndex,
                          currentSpecies: store.species,
-                         scale: miniScale)
+                         scale: miniScale,
+                         active: store.popoverVisible)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .frame(maxWidth: .infinity, alignment: .center)
 
@@ -161,8 +163,8 @@ struct CollectionView: View {
             }
             row("부은 총 물", "\(store.save.waterSinceInstall.formatted()) mL")
             row("누적 원시 토큰", TokenFormat.short(store.save.rawSinceInstall))
-            if store.save.streakDays > 0 {
-                row("연속 사용", "\(store.save.streakDays)일 (+\(PlantBalance.streakBonusPercent(days: store.save.streakDays))%)")
+            if store.streakDays > 0 {
+                row("연속 사용", "\(store.streakDays)일 (+\(PlantBalance.streakBonusPercent(days: store.streakDays))%)")
             }
         }
     }

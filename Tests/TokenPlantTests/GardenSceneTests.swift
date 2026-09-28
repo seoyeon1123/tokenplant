@@ -348,7 +348,9 @@ final class GardenSceneTests: XCTestCase {
     /// 열두 개를 다 모았을 때 마지막 두 티어에서 전부 그려져야 한다.
     /// 자리를 좌표로 박아뒀을 때는 넷째부터 조용히 안 그려졌다(`i < decorSpots.count` 에서 잘린다).
     func testEveryDecorationFitsInTheLastTiers() {
-        for key in ["arbor", "forest"] {
+        // 이름은 그대로 두지만 이제 **모든 티어**를 본다 — 창가(72px)는 한 줄에 3자리뿐이라
+        // 넷째 장식부터 안 그려졌다.
+        for key in ["sill", "balc", "bed", "yard", "green", "arbor", "forest"] {
             let layout = SceneLayout.byKey(key)
             XCTAssertGreaterThanOrEqual(layout.decorSpots.count, DecorIcons.allKeys.count,
                                         "\(key) 장식 자리 \(layout.decorSpots.count)개 < 12")

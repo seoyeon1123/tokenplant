@@ -62,12 +62,16 @@ struct LimitsSnapshot: Sendable {
 enum LimitsReader {
 
     /// 두 프로바이더를 모아 읽는다. Keychain·프로세스·네트워크를 타므로 메인 액터 밖에서 호출한다.
-    static func read() async -> LimitsSnapshot {
+    /// `allowPrompt` 는 **사용자가 방금 눌렀을 때만** 켠다(토글 켜기 · 권한 다시 요청).
+    /// 예전엔 어디서도 켜지 않아서 키체인 허용 창이 한 번도 안 떴고, 안내문은 "맥이 묻는다"는데
+    /// 실제로는 "키체인 접근 권한이 필요해요"만 영원히 떴다 — 권한을 줄 길이 앱 안에 없었다.
+    /// 30초 주기 갱신은 계속 창 없이 읽는다. 거부한 사람에게 창을 되풀이해 띄우면 안 된다.
+    static func read(allowPrompt: Bool = false) async -> LimitsSnapshot {
         var snap = LimitsSnapshot()
         var notes: [String] = []
 
         do {
-            let status = try await readClaude()
+            let status = try await readClaude(allowPrompt: allowPrompt)
             snap.isReady = true
             snap.windows.append(contentsOf: status.grantableWindows)
         } catch {
@@ -98,6 +102,9 @@ enum LimitsReader {
             return "키체인 접근 권한이 필요해요"
         case .keychainUnavailable:
             return "키체인을 못 읽었어요"
+        case .httpStatus(401), .httpStatus(403):
+            // 토큰이 만료됐다. 숫자만 보여주면 사용자는 무엇을 해야 할지 모른다.
+            return "Claude Code 로그인이 만료됐어요 — Claude Code 를 한 번 실행하면 갱신돼요"
         case .httpStatus(let code):
             return "Claude 한도 조회 실패 (\(code))"
         case .rateLimited:
@@ -172,8 +179,8 @@ enum LimitsReader {
         }
     }
 
-    static func readClaude() async throws -> ClaudeLimits {
-        let token = try keychainAccessToken()
+    static func readClaude(allowPrompt: Bool = false) async throws -> ClaudeLimits {
+        let token = try keychainAccessToken(allowPrompt: allowPrompt)
         var request = URLRequest(url: usageURL, timeoutInterval: 15)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")

@@ -16,6 +16,20 @@ final class PlantStore {
     /// 방금 쓴 아이템 — 거름과 분갈이 흙이 각각 다른 연출을 타야 한다.
     /// 단계 상승 연출(`celebration`)과 별개 신호다: 분갈이 흙으로 단계가 오르면 둘 다 재생된다.
     private(set) var itemEffect: ShopItem?
+    /// 팝오버가 열린 횟수. `PotView` 가 이걸 보고 "열릴 때 할 일"(연출 대기열 비우기)을 한다.
+    ///
+    /// `onAppear` 만 믿지 않는 이유: `MenuBarExtra(.window)` 는 창을 숨겼다 다시 보여줄 뿐이라
+    /// 뷰가 다시 나타난 것으로 치지 않을 수 있다. 그러면 앱을 켜둔 동안 두 번째부터는
+    /// 닫아둔 사이에 자란 연출을 **영영** 못 본다. 창이 앞으로 올 때 이 값이 오른다.
+    private(set) var popoverOpenSeq = 0
+    func notePopoverShown() { popoverOpenSeq += 1; popoverVisible = true }
+    /// 팝오버가 지금 보이나. `MenuBarExtra(.window)` 는 닫아도 뷰를 숨기기만 해서
+    /// 도감 탭을 연 채로 닫으면 미니 정원의 5fps 루프가 보는 사람 없이 계속 돌았다.
+    private(set) var popoverVisible = true
+    func notePopoverHidden() { popoverVisible = false }
+
+    /// 방금 쓴 아이템이 들어간 화분. 영양제처럼 한 그루에만 가는 품목의 연출이 본다.
+    private(set) var itemEffectSlot = 0
     private(set) var itemEffectSeq = 0
 
     /// 오늘 잔액에 들어온 물 / 오늘 원시 토큰 — 표시용.
@@ -57,10 +71,30 @@ final class PlantStore {
     // MARK: 저장 · 로드
 
     private func load() {
-        if let data = try? Data(contentsOf: url),
-           let decoded = try? JSONDecoder().decode(PlantSave.self, from: data) {
-            save = decoded
-            lastWritten = data
+        if let data = try? Data(contentsOf: url) {
+            let report = DecodeLossReport()
+            let decoder = JSONDecoder()
+            decoder.userInfo[DecodeLossReport.key] = report
+            if let decoded = try? decoder.decode(PlantSave.self, from: data) {
+                save = decoded
+                lastWritten = data
+                // 일부를 못 읽었다(손으로 고침 · 다른 버전). 읽은 만큼은 살리되, 다음 저장이
+                // 원본을 덮기 **전에** 옆에 둔다 — 안 그러면 못 읽은 정원이 흔적 없이 사라진다.
+                if !report.lost.isEmpty {
+                    let stamp = Int(clock().timeIntervalSince1970)
+                    let aside = url.deletingLastPathComponent()
+                        .appendingPathComponent("state.json.partial-\(stamp).bak")
+                    try? FileManager.default.copyItem(at: url, to: aside)
+                }
+            } else if !data.isEmpty {
+                // 읽을 수 없는 세이브는 **덮어쓰기 전에 옆으로 치운다.** 이게 없으면 바로 아래에서
+                // 새 씨앗을 심고 저장하는 순간 정원·지갑·기록이 흔적도 없이 사라진다.
+                // 필드 하나가 깨진 건 관대 디코딩이 흡수하므로, 여기 오는 건 파일째 망가진 경우다.
+                let stamp = Int(clock().timeIntervalSince1970)
+                let aside = url.deletingLastPathComponent()
+                    .appendingPathComponent("state.json.unreadable-\(stamp).bak")
+                try? FileManager.default.copyItem(at: url, to: aside)
+            }
         }
         // 첫 실행이면 씨앗을 심는다. 화분이 비어 있으면 게이지도 상태 문구도 그릴 게 없다.
         if save.pot == nil {
@@ -68,6 +102,12 @@ final class PlantStore {
             persist()
         }
     }
+
+    private static let encoder: JSONEncoder = {
+        let e = JSONEncoder()
+        e.outputFormatting = [.sortedKeys]
+        return e
+    }()
 
     /// 마지막으로 **실제로 쓴** 바이트. 같은 내용을 또 쓰지 않으려고 들고 있는다.
     private var lastWritten: Data?
@@ -80,7 +120,9 @@ final class PlantStore {
     /// 매번 반복했다. 무엇이 바뀌었는지를 호출부가 판단하게 두면 이런 구멍이 계속 생긴다 —
     /// 바뀐 것을 아는 건 여기다.
     private func persist() {
-        guard let data = try? JSONEncoder().encode(save) else { return }
+        // 키 순서를 고정한다. 사전은 같은 내용이어도 인코딩 순서가 가끔 달라서(실측 200번 중 2번)
+        // 바뀐 게 없는데 "바뀌었다"로 보고 파일을 또 쓴다.
+        guard let data = try? Self.encoder.encode(save) else { return }
         guard data != lastWritten else { return }
         try? data.write(to: url, options: .atomic)
         lastWritten = data
@@ -112,8 +154,9 @@ final class PlantStore {
         // 켜진다. 3일 뒤 실제 유입이 측정돼도 다시 잡을 기회가 없어서,
         // 하루 5M 쓰는 사람이 **11배 큰 목표(280일)** 에 영원히 갇혔다.
         //
-        // 아래 가드가 안전을 맡는다: 측정이 됐고(3일), 아직 1단계도 안 넘은 그루만.
+        // 아래 가드가 안전을 맡는다: 측정이 됐고(3일), 그루당 한 번, 줄이는 방향만.
         refitUntouchedCycles()
+        persist()   // 재조정이 바꾼 목표도 이번에 같이 쓴다. 두 번째는 바뀐 게 없으면 안 쓴다.
 
         // **여기서 대기열을 비우지 않는다.**
         //
@@ -125,6 +168,16 @@ final class PlantStore {
         //
         // 대기열은 세이브에 그대로 쌓이고(같은 종류는 합쳐지므로 무한정 안 큰다),
         // 팝오버가 열릴 때 `PotView.onAppear` 가 비운다.
+    }
+
+    /// 한도 창 보너스 켜기/끄기. 끄면 키체인을 아예 안 건드린다.
+    ///
+    /// 끌 때 지금까지 읽어둔 창 정보도 비운다 — 껐는데 화면에 한도가 계속 떠 있으면
+    /// 여전히 뭔가 읽고 있는 것으로 보인다.
+    func setLimitBonus(_ on: Bool) {
+        save.limitBonusEnabled = on
+        if !on { limits = LimitsSnapshot() }
+        persist()
     }
 
     /// 한도 창 상태를 받아 물통에 보너스를 넣는다.
@@ -140,7 +193,9 @@ final class PlantStore {
             lastWindowBonus = gained
             lastWindowBonusDay = today
             persist()
-            pickCelebration()
+            // 여기서 `pickCelebration()` 을 부르지 않는다. 한도 조회는 팝오버가 닫혀 있어도
+            // 돌아서, 부르면 닫아둔 동안 쌓인 단계 상승·이식 연출까지 **보는 사람 없이** 비워진다
+            // (`update` 가 대기열을 안 비우는 것과 같은 이유). 다음에 열 때 `PotView` 가 비운다.
         }
     }
 
@@ -156,9 +211,14 @@ final class PlantStore {
             // 그 값이 14일 동안 모든 가격과 다음 사이클 목표에 들어간다.
             guard day != today else { continue }
             let clamped = delta.clampedToZero
-            save.dailyRaw[day, default: 0] += clamped.raw
+            // **더하지 않고 큰 쪽을 둔다.** 로그 값은 그날의 전체라, 이미 실시간으로 적은 날에
+            // 더하면 그날이 두 배가 된다. 실제로 `historyBackfilled` 키가 없던 옛 세이브에서
+            // 업데이트 후 백필이 돌아 09-15·17·18·21 이 정확히 2배로 남았고, 하루 유입이
+            // 90.8M → 174.8M 으로 잡혀 모든 가격이 1.9배였다.
+            // 큰 쪽인 이유: 앱을 중간에 켠 날은 실시간 기록이 일부뿐이고 로그가 전체다.
+            save.dailyRaw[day] = max(save.dailyRaw[day] ?? 0, clamped.raw)
             let mL = PlantBalance.water(from: clamped)
-            if mL > 0 { save.dailyWater[day, default: 0] += mL }
+            if mL > 0 { save.dailyWater[day] = max(save.dailyWater[day] ?? 0, mL) }
         }
         save.dailyRaw = PlantBalance.prunedDailyRaw(save.dailyRaw, today: today)
         save.dailyWater = PlantBalance.prunedDailyRaw(save.dailyWater, today: today)
@@ -200,11 +260,16 @@ final class PlantStore {
             // 진행도가 앞으로 뛰었다(20일차에 안 쉰 73.0% vs 사흘 쉰 82.1%).
             // 스트릭이 빠짐을 벌주는데 여기서 보상하면 두 규칙이 반대로 간다.
             guard !p.cycleFitted else { continue }
+            // 판정 기회는 측정이 처음 된 이 순간 한 번뿐이다. 줄이지 않기로 해도 표시는 남긴다 —
+            // 안 남기면 며칠 쉬어 평균이 내려간 날 다시 여기 와서 목표가 줄어든다.
             // **줄이는 방향만.** 늘리면 게이지가 뒤로 가고 "쓰면 자란다"가 깨진다.
             // 줄이는 건 반대로 진행도가 앞으로 뛰는 것이라 사용자가 손해 볼 게 없다.
-            guard fitted < p.cycleWater else { continue }
             // 사이클 1/3 을 넘긴 그루는 그냥 둔다 — 그쯤이면 그 목표로 계획을 세웠다.
-            guard p.water < p.cycleWater / 3 else { continue }
+            guard fitted < p.cycleWater, p.water < p.cycleWater / 3 else {
+                p.cycleFitted = true
+                save[keyPath: key] = p
+                continue
+            }
 
             p.cycleWater = fitted
             p.cycleFitted = true
@@ -214,6 +279,27 @@ final class PlantStore {
             p.stageIndex = PlantBalance.stageIndex(forWater: p.water, cycle: fitted)
             save[keyPath: key] = p
         }
+    }
+
+    /// 앱이 꺼져 있었거나 자정을 넘겼으면 다시 읽어야 할 날들(마지막 적립일 ~ 어제). 최대 14일.
+    /// 첫 설치 전이면 nil — 설치 전 로그는 소급하지 않는다.
+    func missedDays(today: String) -> [String]? {
+        guard save.claimedTodayByProvider != nil, !save.lastDate.isEmpty, save.lastDate < today,
+              let oldest = DayKey.shifted(today, by: -PlantBalance.dailyRawWindow) else { return nil }
+        let start = max(save.lastDate, oldest)
+        var out: [String] = []
+        var d = start
+        while d < today, out.count <= PlantBalance.dailyRawWindow {
+            out.append(d)
+            guard let n = DayKey.shifted(d, by: 1) else { break }
+            d = n
+        }
+        return out.isEmpty ? nil : out
+    }
+
+    func catchUp(_ byDay: [String: [String: TokenDelta]], from: String) {
+        PlantEngine.catchUp(&save, byDay: byDay, from: from, today: today, now: clock())
+        persist()
     }
 
     /// 아직 과거를 안 읽었나. 한 번만 읽고 표시해 둔다 —
@@ -232,7 +318,7 @@ final class PlantStore {
 
     @discardableResult
     func buy(_ item: ShopItem) -> PurchaseResult {
-        let r = PlantEngine.buy(item, &save)
+        let r = PlantEngine.buy(item, &save, roll: UInt64.random(in: 0..<1_000_000), now: clock())
         if r == .ok { persist() }
         return r
     }
@@ -243,10 +329,10 @@ final class PlantStore {
     private(set) var lastDecorFound: String?
 
     @discardableResult
-    func use(_ item: ShopItem) -> UseResult {
+    func use(_ item: ShopItem, slot: Int = 0) -> UseResult {
         lastDecorFound = nil
         let before = Set(save.decorations)
-        let r = PlantEngine.use(item, &save, today: today, now: clock())
+        let r = PlantEngine.use(item, &save, today: today, now: clock(), slot: slot)
         if case .ok(let gained) = r {
             if item == .decorBox {
                 lastDecorFound = save.decorations.first { !before.contains($0) }
@@ -254,6 +340,7 @@ final class PlantStore {
             lastWaterGained = gained
             persist()
             itemEffect = item
+            itemEffectSlot = slot
             itemEffectSeq += 1
             pickCelebration()
         }
@@ -313,12 +400,6 @@ final class PlantStore {
 
     /// 지갑에 있는 **원시 토큰**. 상점은 여기서 나간다. 성장은 안 건드린다.
     var wallet: Int { save.rawWallet }
-
-    /// 지갑이 하루치의 몇 배인지 — 게이지 하나로 "얼마나 모았나"를 보여준다.
-    /// 사이클(400,000mL) 대비로 재면 단위가 섞여 아무 뜻이 없으므로 하루치를 기준으로 쓴다.
-    var walletShareOfDay: Double {
-        min(1, Double(save.rawWallet) / Double(dailyRate))
-    }
 
     /// 사용률이 가장 높은 한도 창 — 홈 한 줄에 쓴다.
     var topWindow: LimitWindowInfo? { limits.highest }
@@ -380,10 +461,13 @@ final class PlantStore {
     }
 
     /// 기준을 재기까지 며칠이 쌓였나 — "재는 중 · 2일째" 에 쓴다.
+    ///
+    /// `baselineRawRate` 와 같은 자로 잰다 — 첫 기록부터 **어제까지** 지난 날 수.
+    /// 마지막 기록에서 끝냈더니 최근에 쉰 날이 빠져 실제보다 적게 찍혔다.
     var baselineDaysCollected: Int {
-        let past = save.dailyRaw.keys.filter { $0 != today }.sorted()
-        guard let first = past.first, let last = past.last else { return 0 }
-        return DayKey.days(from: first, to: last) + 1
+        let windowStart = DayKey.shifted(today, by: -PlantBalance.dailyRawWindow) ?? ""
+        guard let first = save.dailyRaw.keys.filter({ $0 < today && $0 >= windowStart }).min() else { return 0 }
+        return DayKey.days(from: first, to: today)
     }
 
     /// 하루에 실제로 화분에 들어간 mL(보너스 전). **상수 환산이 아니라 기록에서 읽는다.**
@@ -392,10 +476,11 @@ final class PlantStore {
     /// 작업 성격이 바뀌면 크게 어긋난다 — 캐시읽기 비중이 높은 사람은 실측 3,796 인데
     /// 상수가 6,957 이어서 **하루 유입이 절반으로 보였다.**
     var measuredDailyWater: Int? {
-        let past = save.dailyWater.filter { $0.key != today }
-        let keys = past.keys.sorted()
-        guard let first = keys.first, let last = keys.last else { return nil }
-        let span = DayKey.days(from: first, to: last) + 1
+        // 끝은 **어제**다. 마지막 기록에서 끝내면 최근에 쉰 날이 빠져 하루 유입이 부푼다.
+        let windowStart = DayKey.shifted(today, by: -PlantBalance.dailyRawWindow) ?? ""
+        let past = save.dailyWater.filter { $0.key < today && $0.key >= windowStart }
+        guard let first = past.keys.min() else { return nil }
+        let span = DayKey.days(from: first, to: today)
         guard span >= PlantBalance.dailyRawMinDays else { return nil }
         return max(1, past.values.reduce(0, +) / span)
     }
@@ -459,9 +544,20 @@ final class PlantStore {
     ///
     /// 화면에 **반드시** 보여야 한다. 상한에 걸렸는데 버튼만 회색이면
     /// 사용자는 "고장났나"로 읽는다 — 남은 횟수를 숫자로 보여주면 규칙이 그냥 이해된다.
-    var waterUsesLeftToday: Int {
-        let usedToday = save.waterUseDay == DayKey.make(clock()) ? save.waterUsesToday : 0
-        return max(0, PlantBalance.dailyWaterUses - usedToday)
+    var waterUsesLeftToday: Int { PlantEngine.waterUsesLeft(save, today: DayKey.make(clock())) }
+
+    /// 지금 이 품목을 쓸 수 없는 이유. 쓸 수 있으면(또는 가진 게 없으면) nil.
+    ///
+    /// 퀵 슬롯과 창고가 **이것 하나**를 본다. 따로 판정하던 때는 창고만 물의 하루 상한을 안 봐서,
+    /// 다 쓴 날에도 「사용」이 켜져 있다가 누르면 거절 문구만 떴다.
+    func blockReason(_ item: ShopItem) -> String? {
+        guard save.count(item) > 0 else { return nil }
+        switch item {
+        case .water: return PlantEngine.waterBlockReason(save, today: DayKey.make(clock()))
+        case .fertilizer: return PlantEngine.fertilizerBlockReason(save, now: clock())
+        case .nutrient: return nutrientSlots.isEmpty ? "줄 수 있는 그루가 없어요 (그루마다 한 번)" : nil
+        default: return nil
+        }
     }
 
     /// 이 그루에 영양제를 더 줄 수 있나. 이식하면 저절로 풀린다.
@@ -470,13 +566,27 @@ final class PlantStore {
         return p.nutrientUses < PlantBalance.nutrientUsesPerPlant
     }
 
+    /// 이 그루에 지금 영양제를 주면 들어갈 mL(보너스 전). 줄 수 없으면 nil.
+    /// 퀵 슬롯·창고·툴팁이 **같은 판정**을 보게 한 곳에 둔다 — 예전에 두 화면이 달랐다.
+    func nutrientGain(_ slot: Int) -> Int? {
+        guard nutrientAvailable(slot), let p = pot(slot) else { return nil }
+        let g = Nutrient.water(currentWater: p.water, cycle: p.cycleWater)
+        return g > 0 ? g : nil
+    }
+
+    /// 영양제를 줄 수 있는 화분 번호들.
+    var nutrientSlots: [Int] { (0..<slotCount).filter { nutrientGain($0) != nil } }
+
     // MARK: 며칠치인가 — 상점의 모든 큰 숫자가 여기를 지난다
 
     /// 최근 14일 달력일 평균 유입(원시 토큰/일). 표본이 3일 미만이면 실측 기본값.
-    var dailyRate: Int { PlantBalance.dailyRawRate(save.dailyRaw) }
+    var dailyRate: Int { PlantEngine.dailyRate(save) }
+
+    /// 지금 이어지고 있는 연속 사용일. 끊겼으면 0 — 저장값(`save.streakDays`)은 다음에 쓸 때 고쳐진다.
+    var streakDays: Int { PlantEngine.activeStreak(save, today: today) }
 
     /// 다음 연속 사용 선물까지 남은 일수. 다 받았으면 nil.
-    var daysToNextGift: Int? { PlantBalance.daysToNextGift(streak: save.streakDays) }
+    var daysToNextGift: Int? { PlantBalance.daysToNextGift(streak: streakDays) }
 
     /// 창고에 든 무료 뽑기권 수. 상점이 "값을 낼지 말지"를 여기서 판단한다.
     var freeDraws: Int { save.count(.decorBox) }
@@ -494,11 +604,8 @@ final class PlantStore {
 
     /// 측정된 값인가, 아직 기본값을 쓰는 중인가. 화면에서 "예상"과 "실측"을 구분해 쓴다 —
     /// 남의 평균으로 계산한 값을 자기 값인 척 보여주면 그게 제일 나쁘다.
-    var dailyRateIsMeasured: Bool {
-        let keys = save.dailyRaw.keys.sorted()
-        guard let f = keys.first, let l = keys.last else { return false }
-        return DayKey.days(from: f, to: l) + 1 >= PlantBalance.dailyRawMinDays
-    }
+    /// 판정은 `dailyRate` 와 **같은 함수**를 탄다 — 따로 세면 가격은 실측인데 화면은 "측정 중"이 된다.
+    var dailyRateIsMeasured: Bool { PlantEngine.dailyRateIsMeasured(save) }
 
     /// 이 사람의 하루 유입으로 환산한 값.
     func price(_ item: ShopItem) -> Int { PlantEngine.price(item, save) }
@@ -506,20 +613,6 @@ final class PlantStore {
     /// 원시 토큰 → 며칠치.
     func days(forRaw raw: Int) -> Double {
         PlantBalance.days(forRaw: raw, rate: dailyRate)
-    }
-
-    /// 지금 지갑으로 살 수 있는 **가장 비싼** 품목. 없으면 nil.
-    /// 지금 지갑으로 살 수 있는 **가장 비싼** 품목. 없으면 nil.
-    ///
-    /// `isCosmetic` 을 빼는 건 `nextGoal` 뿐이었는데, 그래서 장식을 다 모은 사람의 홈에
-    /// "지금 장식 뽑기 살 수 있어요" 가 계속 떴다 — 같은 순간 상점의 그 줄은
-    /// "다 모았어요" 로 버튼도 없었다. 두 화면이 정반대를 말했다.
-    var affordableNow: ShopItem? {
-        ShopItem.sortedByPrice.last { item in
-            guard PlantEngine.canBuy(item, save) == .ok else { return false }
-            if item == .decorBox { return !DecorIcons.gachaKeys.allSatisfy(save.decorations.contains) }
-            return true
-        }
     }
 
     /// 아직 못 사는 품목 중 **가장 싼** 것과 남은 양. 목표가 없으면 모을 이유도 없다.
@@ -563,7 +656,7 @@ final class PlantStore {
         //  2. 보너스를 아예 안 셌다. 물·스트릭·거름이 다 붙으면 실제로 2배 빠르다.
         let measured = measuredDailyWater ?? max(1, dailyRate / PlantBalance.rawPerML)
         let perDay = PlantBalance.applied(water: measured,
-                                          streakDays: save.streakDays,
+                                          streakDays: streakDays,
                                           fertilizerActive: save.fertilizerActive(now: clock()))
         return Int((Double(remaining) / Double(max(1, perDay))).rounded(.up))
     }

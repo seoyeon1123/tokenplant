@@ -83,7 +83,9 @@ enum UsageReader {
             snap.note = "로그 폴더를 못 찾았어요 (~/.claude/projects · ~/.codex/sessions)"
             return snap
         }
-        let (claude, s1) = readClaudeCode(today: today, root: claudeRoot)
+        // 30초마다 부르는 경로라 **이어 읽는다.** 실측 하루 74MB 를 매번 처음부터 파싱하면
+        // 릴리스 빌드로도 1.9초 — 30초마다 코어 하나의 6% 를 계속 먹고, 하루가 갈수록 는다.
+        let (claude, s1) = ClaudeTailReader.shared.read(today: today, root: claudeRoot ?? defaultClaudeRoot)
         if !claude.isZero { snap.byProvider["claude"] = claude }
         let (codex, s2) = readCodex(today: today, root: codexRoot)
         if !codex.isZero { snap.byProvider["codex"] = codex }
@@ -103,14 +105,40 @@ enum UsageReader {
                            today: String = DayKey.make(Date()),
                            claudeRoot: URL? = nil,
                            codexRoot: URL? = nil) -> [String: TokenDelta] {
+        readRecentByProvider(days: days, today: today, claudeRoot: claudeRoot, codexRoot: codexRoot)
+            .mapValues { $0.values.reduce(TokenDelta()) { $0 + $1 } }
+            .filter { !$0.value.isZero }
+    }
+
+    /// 앱이 꺼져 있던 날들을 **프로바이더별로** 읽는다(`PlantEngine.catchUp` 용).
+    ///
+    /// 백필과 다른 점은 Codex 다. 백필은 "하루가 얼마인가"를 재는 거라 세션을 시작일에 몰아도
+    /// 되지만, 여기서 읽은 건 **실제로 적립된다.** 그래서 그날 폴더에 있고 **그날 끝난**
+    /// 세션만 센다 — 나중에 이어 쓴 세션의 누적값에는 다른 날 몫이 섞여 있어 과다 적립된다.
+    /// 모자라게 세는 쪽을 고른다.
+    static func readDays(_ days: [String],
+                         claudeRoot: URL? = nil,
+                         codexRoot: URL? = nil) -> [String: [String: TokenDelta]] {
+        guard let newest = days.max(), let oldest = days.min() else { return [:] }
+        let span = DayKey.days(from: oldest, to: newest) + 1
+        return readRecentByProvider(days: span, today: newest, claudeRoot: claudeRoot,
+                                    codexRoot: codexRoot, codexEndedThatDayOnly: true)
+            .filter { days.contains($0.key) }
+    }
+
+    static func readRecentByProvider(days: Int,
+                                     today: String,
+                                     claudeRoot: URL? = nil,
+                                     codexRoot: URL? = nil,
+                                     codexEndedThatDayOnly: Bool = false) -> [String: [String: TokenDelta]] {
         var wanted: [String] = []
         guard let todayDate = DayKey.parse(today) else { return [:] }
         for back in 0..<max(1, days) {
-            guard let d = Calendar.current.date(byAdding: .day, value: -back, to: todayDate) else { continue }
+            guard let d = DayKey.gregorian.date(byAdding: .day, value: -back, to: todayDate) else { continue }
             wanted.append(DayKey.make(d))
         }
         let wantedSet = Set(wanted)
-        var out: [String: TokenDelta] = [:]
+        var out: [String: [String: TokenDelta]] = [:]
 
         // ── Claude Code: 파일을 한 번만 훑고 줄마다 날짜를 보고 통에 담는다.
         // 날짜별로 14번 훑으면 같은 파일을 14번 파싱한다.
@@ -154,7 +182,7 @@ enum UsageReader {
                             seen.insert(dedupe)
                         }
                         guard let usage = findUsage(obj) else { continue }
-                        out[day] = (out[day] ?? TokenDelta()) + usage
+                        out[day, default: [:]]["claude"] = (out[day]?["claude"] ?? TokenDelta()) + usage
                     }
                 }
             }
@@ -168,12 +196,19 @@ enum UsageReader {
             let dir = xroot.appendingPathComponent("\(parts[0])/\(parts[1])/\(parts[2])", isDirectory: true)
             guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { continue }
             for name in names where name.hasSuffix(".jsonl") {
-                guard let tu = lastTotalTokenUsage(dir.appendingPathComponent(name)) else { continue }
-                out[day] = (out[day] ?? TokenDelta()) + tu
+                let url = dir.appendingPathComponent(name)
+                if codexEndedThatDayOnly {
+                    guard let m = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                            .contentModificationDate, DayKey.make(m) == day else { continue }
+                }
+                guard let tu = lastTotalTokenUsage(url) else { continue }
+                out[day, default: [:]]["codex"] = (out[day]?["codex"] ?? TokenDelta()) + tu
             }
         }
 
-        return out.filter { wantedSet.contains($0.key) && !$0.value.isZero }
+        return out.filter { wantedSet.contains($0.key) }
+            .mapValues { $0.filter { !$0.value.isZero } }
+            .filter { !$0.value.isEmpty }
     }
 
     // MARK: Claude Code
@@ -194,26 +229,31 @@ enum UsageReader {
         for file in files {
             guard let reader = LineReader(url: file) else { skipped += 1; continue }
             while let line = reader.nextLine() {
-                guard line.count > 2,
-                      let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any]
-                else { continue }
-
-                // 오늘 것만. 타임스탬프가 없으면 건너뛴다(파일 mtime 만으로는 못 믿는다).
-                guard let ts = obj["timestamp"] as? String, window.contains(ts) else { continue }
-
-                let key = (obj["requestId"] as? String)
-                    ?? ((obj["message"] as? [String: Any])?["id"] as? String)
-                    ?? (obj["uuid"] as? String)
-                if let key {
-                    if seen.contains(key) { continue }
-                    seen.insert(key)
+                if let usage = claudeUsage(line: line, window: window, seen: &seen) {
+                    total = total + usage
                 }
-
-                guard let usage = findUsage(obj) else { continue }
-                total = total + usage
             }
         }
         return (total, skipped)
+    }
+
+    /// 한 줄 → 오늘 몫 사용량. 중복이면 nil. 전체 읽기와 이어 읽기가 **같은 판정**을 쓴다.
+    static func claudeUsage(line: Data, window: DayWindow, seen: inout Set<String>) -> TokenDelta? {
+        guard line.count > 2,
+              let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any]
+        else { return nil }
+
+        // 오늘 것만. 타임스탬프가 없으면 건너뛴다(파일 mtime 만으로는 못 믿는다).
+        guard let ts = obj["timestamp"] as? String, window.contains(ts) else { return nil }
+
+        let key = (obj["requestId"] as? String)
+            ?? ((obj["message"] as? [String: Any])?["id"] as? String)
+            ?? (obj["uuid"] as? String)
+        if let key {
+            if seen.contains(key) { return nil }
+            seen.insert(key)
+        }
+        return findUsage(obj)
     }
 
     /// 중첩 어디에 있든 usage 를 찾는다. 스키마가 버전마다 조금씩 움직인다.
@@ -245,18 +285,108 @@ enum UsageReader {
         let dir = (root ?? defaultCodexRoot)
             .appendingPathComponent("\(parts[0])/\(parts[1])/\(parts[2])", isDirectory: true)
 
-        guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else {
-            return (TokenDelta(), 0)
-        }
+        // 오늘 폴더가 없어도 **빠져나가지 않는다** — 오늘 새 세션이 없을 뿐, 어제 시작한 세션을
+        // 오늘 이어 쓰고 있을 수 있다(자정 직후가 늘 그렇다).
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
 
         var total = TokenDelta()
         var skipped = 0
         for name in names where name.hasSuffix(".jsonl") {
             let url = dir.appendingPathComponent(name)
-            guard let tu = lastTotalTokenUsage(url) else { skipped += 1; continue }
+            guard let tu = lastTotalTokenUsage(url) else {
+                // 막 시작해서 아직 `token_count` 가 없는 세션은 **못 읽은 게 아니다.**
+                // 그걸 셌더니 Codex 만 쓰는 사람에게 세션을 열 때마다 "로그 1개를 읽지 못했어요"가 떴다.
+                if !FileManager.default.isReadableFile(atPath: url.path) { skipped += 1 }
+                continue
+            }
             total = total + tu
         }
+        total = total + carriedOverCodex(today: today, root: root ?? defaultCodexRoot)
         return (total, skipped)
+    }
+
+    /// 지난 폴더에 있는데 **오늘도 이어 쓴** 세션의 오늘 몫.
+    ///
+    /// Codex 는 세션을 **시작한 날** 폴더에 파일을 두고 끝까지 거기에 이어 쓴다(`resume` 도 같다).
+    /// 오늘 폴더만 보면 자정을 넘긴 세션, 며칠 전 세션을 다시 연 경우의 오늘 사용량이 통째로 빠졌다.
+    ///
+    /// 파일의 누적값은 세션 전체라, 오늘 몫 = 마지막 누적 − **오늘 0시 직전** 누적이다.
+    /// 0시 직전 값을 확정할 수 없으면(타임스탬프 없는 옛 형식, 너무 멀리 있음) 그 파일은 **안 센다** —
+    /// 모르는 걸 전부 오늘로 치면 며칠치가 한꺼번에 들어온다.
+    static func carriedOverCodex(today: String, root: URL, lookbackDays: Int = 30) -> TokenDelta {
+        guard let window = utcWindow(forLocalDay: today) else { return TokenDelta() }
+        var total = TokenDelta()
+        for back in 1...lookbackDays {
+            guard let day = DayKey.shifted(today, by: -back) else { continue }
+            let parts = day.split(separator: "-")
+            let dir = root.appendingPathComponent("\(parts[0])/\(parts[1])/\(parts[2])", isDirectory: true)
+            guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { continue }
+            for name in names where name.hasSuffix(".jsonl") {
+                let url = dir.appendingPathComponent(name)
+                // 오늘 안 건드린 파일엔 오늘 몫이 있을 수 없다.
+                guard let m = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                        .contentModificationDate, DayKey.make(m) == today,
+                      let last = lastTotalTokenUsage(url),
+                      let base = CodexMidnight.shared.baseline(url, today: today, before: window.start)
+                else { continue }
+                // 누적이 0시 직전보다 **작으면** 세션 카운터가 다시 시작된 것이다(같은 파일에 이어 쓴
+                // resume 에서 실측: 240,988,725 → 180,698). 빼면 음수라 0이 돼서, 그날 그 세션 몫이
+                // 통째로 빠졌다. 그땐 리셋 뒤 누적(`last`)을 오늘 몫으로 친다 — 리셋 전 오늘 몫은
+                // 알 수 없어 덜 세지만, 0보다는 훨씬 가깝고 넘치게 셀 일은 없다.
+                let d = last - base
+                let reset = d.input < 0 || d.output < 0 || d.cacheRead < 0 || d.cacheWrite < 0
+                total = total + (reset ? last : d)
+            }
+        }
+        return total
+    }
+
+    /// `before`(UTC ISO) 보다 **앞선** 마지막 누적값. 거꾸로 훑는다.
+    ///
+    /// - 찾으면 그 값, 파일 처음까지 가도 앞선 값이 없으면 0(그 세션은 오늘 처음 썼다).
+    /// - 타임스탬프 없는 누적 줄을 만나거나 `limit` 을 넘기면 nil — 확정할 수 없다.
+    static func totalTokenUsage(_ url: URL, before: String, limit: Int = 256 << 20) -> TokenDelta? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let size = try? handle.seekToEnd() else { return nil }
+        let needle = Data("total_token_usage".utf8)
+        let newline = UInt8(ascii: "\n")
+        var pos = Int(size)
+        var carry = Data()          // 청크 앞머리의 잘린 줄 — 다음(더 앞) 청크와 이어 붙인다
+        var scanned = 0
+        while pos > 0 {
+            guard scanned < limit else { return nil }
+            let n = min(1 << 20, pos)
+            pos -= n
+            scanned += n
+            guard (try? handle.seek(toOffset: UInt64(pos))) != nil,
+                  let chunk = (try? handle.read(upToCount: n)) ?? nil else { return nil }
+            var data = chunk
+            data.append(carry)
+            // 파일 맨 앞이 아니면 첫 줄은 잘렸을 수 있다 — 떼어 두고 다음에 붙인다.
+            var body = data[data.startIndex...]
+            if pos > 0 {
+                // 줄바꿈이 하나도 없으면 통째로 한 줄의 일부다 — 더 앞을 읽어야 한다.
+                guard let nl = data.firstIndex(of: newline) else { carry = data; continue }
+                carry = Data(data[data.startIndex..<nl])
+                body = data[data.index(after: nl)...]
+            } else {
+                carry = Data()
+            }
+            for line in body.split(separator: newline).reversed() where line.range(of: needle) != nil {
+                guard let obj = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+                      let payload = obj["payload"] as? [String: Any],
+                      let info = payload["info"] as? [String: Any],
+                      let tu = info["total_token_usage"] as? [String: Any] else { continue }
+                guard let ts = obj["timestamp"] as? String else { return nil }
+                guard String(ts.prefix(19)) < before else { continue }
+                let input = intOf(tu["input_tokens"])
+                let cached = intOf(tu["cached_input_tokens"])
+                return TokenDelta(input: max(0, input - cached), output: intOf(tu["output_tokens"]),
+                                  cacheWrite: 0, cacheRead: cached)
+            }
+        }
+        return TokenDelta()
     }
 
     /// 파일 끝에서 16MB 까지 거꾸로 훑어 마지막 `total_token_usage` 를 찾는다.
@@ -338,7 +468,7 @@ enum UsageReader {
 
     static func utcWindow(forLocalDay day: String) -> DayWindow? {
         guard let start = DayKey.parse(day),
-              let end = Calendar.current.date(byAdding: .day, value: 1, to: start) else { return nil }
+              let end = DayKey.gregorian.date(byAdding: .day, value: 1, to: start) else { return nil }
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime]
         f.timeZone = TimeZone(secondsFromGMT: 0)
@@ -354,3 +484,125 @@ enum UsageReader {
     }
 }
 
+
+/// 오늘 Claude Code 로그를 **이어서** 읽는다. 파일마다 어디까지 읽었는지 기억하고
+/// 그 뒤에 붙은 줄만 파싱한다. 결과는 `readClaudeCode` 의 전체 읽기와 같다.
+///
+/// 처음부터 다시 읽는 경우: 날이 바뀜 · 뿌리가 바뀜 · 파일이 줄었거나 다른 파일로 바뀜(inode).
+/// 그때 누계를 버리지 않고 이어 붙이면 이미 센 줄을 또 센다.
+///
+/// 끝의 반쪽 줄은 남겨 둔다 — Claude Code 가 쓰는 중인 줄이다. 다음 번에 줄바꿈이 붙으면 읽는다.
+/// 다만 줄바꿈 없이 끝났어도 **완전한 JSON** 이면 바로 센다(전체 읽기가 그렇게 한다).
+///
+/// 락으로 한 번에 하나만 돈다. 감시견이 갱신을 겹치게 풀어줘도 누계가 꼬이지 않는다.
+final class ClaudeTailReader: @unchecked Sendable {
+    static let shared = ClaudeTailReader()
+
+    private struct FileMark {
+        var inode: UInt64
+        var offset: UInt64
+    }
+
+    private let lock = NSLock()
+    private var day = ""
+    private var root = ""
+    private var marks: [String: FileMark] = [:]
+    private var seen = Set<String>()
+    private var total = TokenDelta()
+
+    private func reset(day: String, root: String) {
+        self.day = day
+        self.root = root
+        marks = [:]
+        seen = []
+        total = TokenDelta()
+    }
+
+    func read(today: String, root url: URL) -> (TokenDelta, Int) {
+        lock.lock(); defer { lock.unlock() }
+        guard let window = UsageReader.utcWindow(forLocalDay: today),
+              let files = UsageReader.jsonlFiles(under: url, modifiedOn: today) else {
+            reset(day: "", root: "")
+            return (TokenDelta(), 0)
+        }
+        if day != today || root != url.path { reset(day: today, root: url.path) }
+
+        // 크기와 inode 를 먼저 다 본다. 하나라도 줄었거나 바뀌었으면 처음부터 —
+        // 그 파일 몫만 빼는 건 불가능하다(중복 판정이 파일을 넘나든다).
+        var stats: [String: (inode: UInt64, size: UInt64)] = [:]
+        for f in files {
+            guard let a = try? FileManager.default.attributesOfItem(atPath: f.path),
+                  let size = (a[.size] as? NSNumber)?.uint64Value,
+                  let inode = (a[.systemFileNumber] as? NSNumber)?.uint64Value else { continue }
+            stats[f.path] = (inode, size)
+        }
+        let broken = marks.contains { path, m in
+            guard let st = stats[path] else { return false }   // 사라진 파일은 이미 센 걸로 둔다
+            return st.inode != m.inode || st.size < m.offset
+        }
+        if broken { reset(day: today, root: url.path) }
+
+        var skipped = 0
+        for f in files {
+            guard let st = stats[f.path] else { skipped += 1; continue }
+            let start = marks[f.path]?.offset ?? 0
+            guard st.size > start else { continue }
+            guard let h = try? FileHandle(forReadingFrom: f) else { skipped += 1; continue }
+            defer { try? h.close() }
+            guard (try? h.seek(toOffset: start)) != nil else { skipped += 1; continue }
+            let consumed = consume(h, from: start, to: st.size, window: window)
+            marks[f.path] = FileMark(inode: st.inode, offset: consumed)
+        }
+        return (total, skipped)
+    }
+
+    /// `start` 부터 읽어 완전한 줄만 센다. 어디까지 소비했는지 돌려준다.
+    private func consume(_ h: FileHandle, from start: UInt64, to end: UInt64,
+                         window: UsageReader.DayWindow) -> UInt64 {
+        let newline = UInt8(ascii: "\n")
+        var pos = start
+        var carry = Data()
+        while pos < end {
+            let n = Int(min(UInt64(1 << 20), end - pos))
+            guard let chunk = try? h.read(upToCount: n), !chunk.isEmpty else { break }
+            pos += UInt64(chunk.count)
+            carry.append(chunk)
+            guard let last = carry.lastIndex(of: newline) else { continue }
+            for line in carry[carry.startIndex..<last].split(separator: newline) {
+                count(Data(line), window: window)
+            }
+            carry = Data(carry[carry.index(after: last)...])
+        }
+        // 끝에 남은 반쪽. 완전한 JSON 이면 센다 — 쓰는 중인 줄은 파싱이 안 되니 남는다.
+        if !carry.isEmpty, (try? JSONSerialization.jsonObject(with: carry)) != nil {
+            count(carry, window: window)
+            carry = Data()
+        }
+        return pos - UInt64(carry.count)
+    }
+
+    private func count(_ line: Data, window: UsageReader.DayWindow) {
+        if let usage = UsageReader.claudeUsage(line: line, window: window, seen: &seen) {
+            total = total + usage
+        }
+    }
+}
+
+/// 지난 세션 파일의 "오늘 0시 직전 누적값" 캐시. 파일은 뒤로만 자라므로 하루에 한 번 재면 된다 —
+/// 30초마다 거꾸로 수백 MB 를 훑을 이유가 없다.
+final class CodexMidnight: @unchecked Sendable {
+    static let shared = CodexMidnight()
+    private let lock = NSLock()
+    private var day = ""
+    /// nil(확정 못 함)도 담는다 — 안 담으면 그 파일을 30초마다 256MB 씩 다시 훑는다.
+    private var cache: [String: TokenDelta?] = [:]
+
+    func baseline(_ url: URL, today: String, before: String) -> TokenDelta? {
+        lock.lock(); defer { lock.unlock() }
+        if day != today { day = today; cache = [:] }
+        if let hit = cache[url.path] { return hit }
+        let v = UsageReader.totalTokenUsage(url, before: before)
+        cache[url.path] = .some(v)
+        return v
+    }
+}

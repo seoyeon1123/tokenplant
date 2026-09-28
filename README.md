@@ -116,7 +116,8 @@ Apple Silicon·Intel 둘 다 담은 universal 바이너리로 만들고, 실패�
   화분 슬롯을 사면 두 그루가 되고, **물은 양쪽에 똑같이** 들어간다
 - **상점** — 11품목, 값은 원시 토큰. 모든 값에 **며칠치**가 붙고,
   부족분은 "하루 더 쓰면 / 2일 더 쓰면"으로, 거름·영양제는 같은 값으로 물을 샀을 때와
-  견줘 이득인지 손해인지 실수치로 보여준다. 장식 뽑기는 12종을 중복 없이 모은다
+  견줘 이득인지 손해인지 실수치로 보여준다. 장식은 상점 3종 + 뽑기 9종으로 모두 12종이고,
+  뽑기는 중복 없이 나온다
 - **창고** — 개수·지속 효과 남은 일수·씨앗 예약
 - **연속 사용 선물** — 토큰을 쓴 날이 3·7·14·30일 이어지면 장식 뽑기 1회.
   날짜가 아니라 **쓴 날**을 세고, 하루 빠지면 처음부터 다시 센다
@@ -128,7 +129,7 @@ Apple Silicon·Intel 둘 다 담은 universal 바이너리로 만들고, 실패�
 
 ```bash
 swift build
-swift test           # 264개
+swift test           # 330개
 swift run            # 번들 없이 바로 — 자동 실행 토글은 이때 안 보인다
 ```
 
@@ -143,7 +144,7 @@ swift run            # 번들 없이 바로 — 자동 실행 토글은 이때 �
 python3 verify/check_syntax.py .    # tree-sitter-swift 파싱
 python3 verify/check_members.py .   # 없는 멤버 · 없는 case · 빠진 case
 python3 verify/check_data.py        # 스프라이트 격자 · 가격표 양언어 일치 · 테스트 리터럴
-python3 verify/run_tests.py         # 엔진 파이썬 포팅 + 단정 414개
+python3 verify/run_tests.py         # 엔진 파이썬 포팅 + 단정 437개
 python3 verify/make_icon.py         # 스프라이트 → Resources/AppIcon.icns
 python3 verify/preview_species.py   # 종×단계 대조표 PNG — 픽셀아트는 보고 고쳐야 한다
 python3 verify/gen_motifs.py --write  # 파이썬 모티프 → Swift 코드 생성
