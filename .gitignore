@@ -16,3 +16,11 @@ __pycache__/
 _to_delete/
 *.zip
 .DS_Store
+
+# Sparkle 비밀키 — 이게 새면 남이 서명한 업데이트를 사용자한테 밀어넣을 수 있다.
+# 공개키(sparkle-key.pub)는 저장소에 둔다. 공개해도 되는 값이고 빌드가 읽는다.
+sparkle-key.priv
+sparkle-key-backup*
+
+# appcast 만들 때 쓰는 작업 폴더. appcast.xml 자체는 저장소에 들어간다.
+dist/appcast/

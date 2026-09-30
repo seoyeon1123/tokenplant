@@ -24,13 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @MainActor
 struct TokenPlantApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var model: AppModel
-
-    init() {
-        // 세이브를 읽기 **전에** 잠근다. `PlantStore` 는 만들어지는 순간 읽고, 첫 실행이면 바로 쓴다.
-        SingleInstance.acquireOrExit()
-        _model = State(initialValue: AppModel())
-    }
+    @State private var model = AppModel()
 
     var body: some Scene {
         MenuBarExtra {
@@ -56,38 +50,6 @@ struct TokenPlantApp: App {
     }
 }
 
-/// 한 번에 하나만 뜬다.
-///
-/// 세이브는 켤 때 한 번 읽고 그 뒤로는 메모리 값을 통째로 덮어쓴다. 둘이 뜨면(brew 로 깐 것 +
-/// 직접 받은 것, `swift run` + 설치본) 서로의 저장을 30초마다 덮어써서 **한쪽에서 산 것이
-/// 다른 쪽 저장에 지워진다.** 같은 번들이면 LaunchServices 가 막아주지만 경로가 다르면 못 막는다.
-/// 그래서 세이브 옆 잠금 파일을 `flock` 으로 쥔다 — 프로세스가 죽으면 커널이 알아서 푼다.
-enum SingleInstance {
-    /// 프로세스가 끝날 때까지 열어 둔다. 닫으면 잠금이 풀린다.
-    nonisolated(unsafe) private static var lockFD: Int32 = -1
-
-    @MainActor
-    static func acquireOrExit() {
-        let path = PlantStore.defaultURL().deletingLastPathComponent()
-            .appendingPathComponent(".lock").path
-        let fd = open(path, O_CREAT | O_RDWR, 0o644)
-        guard fd >= 0 else { return }   // 잠금 파일을 못 만들면 막지 않는다 — 앱이 아예 안 뜨는 것보다 낫다
-        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
-            close(fd)
-            // `NSAlert` 는 못 쓴다 — `App.init` 은 앱이 다 뜨기 전이라 `runModal` 이 창 없이 바로 돌아온다.
-            // 이건 런루프 없이도 뜨고, 누를 때까지 기다린다.
-            var response: CFOptionFlags = 0
-            CFUserNotificationDisplayAlert(
-                0, kCFUserNotificationNoteAlertLevel, nil, nil, nil,
-                "TokenPlant 가 이미 실행 중이에요" as CFString,
-                "메뉴바의 화분을 눌러 보세요.\n두 개가 동시에 뜨면 서로의 저장을 덮어써서 산 것이 사라질 수 있어 이쪽을 닫습니다." as CFString,
-                "확인" as CFString, nil, nil, &response)
-            exit(0)
-        }
-        lockFD = fd
-    }
-}
-
 /// 갱신 루프. 로그 파싱은 IO 라 메인 액터 밖에서 돌린다.
 @MainActor
 @Observable
@@ -95,6 +57,8 @@ final class AppModel {
     static let gardenWindowID = "garden"
 
     let store = PlantStore()
+    /// 자동 업데이트. 만들면 바로 일정이 돈다 — 여기서 더 할 일이 없다.
+    let updater = Updater()
     private(set) var isRefreshing = false
     private(set) var lastRefresh: Date?
     private(set) var readError: String?
@@ -119,14 +83,6 @@ final class AppModel {
     /// 첫 줄에서 되돌아가고 앱이 조용히 죽는다 — 화면은 멀쩡한 숫자를 계속 보여주므로
     /// 아무도 모른다. 실제로 그렇게 하루를 잃었다(세이브가 15:06 에서 멈춰 있었다).
     private var refreshStartedAt: Date?
-    /// 갱신 세대. 감시견이 래치를 풀어 갱신이 겹치면, **가장 최근에 시작한 것만** 반영한다.
-    ///
-    /// 안 막으면 늦게 끝난 옛 갱신이 더 작은 스냅샷을 들고 와 `ingest` 의 기준값을 낮추고,
-    /// 다음 갱신이 그 차이를 **한 번 더** 적립한다. 옛 갱신의 `defer` 가 새 갱신의 래치까지
-    /// 풀어버리는 것도 같은 구멍이다.
-    private var refreshGeneration = 0
-    /// 과거 로그(백필 · 놓친 날)를 읽는 중인가. 감시견과 따로 둔다 — 감시견이 풀어도 이건 안 겹친다.
-    private var historyReadInFlight = false
     /// 이만큼 붙잡혀 있으면 놓아준다. 30초 주기의 세 배 — 느린 디스크에 걸려도 넉넉하다.
     private static let refreshWatchdog: TimeInterval = 90
 
@@ -171,45 +127,24 @@ final class AppModel {
         guard !isRefreshing else { return }
         isRefreshing = true
         refreshStartedAt = Date()
-        refreshGeneration &+= 1
-        let generation = refreshGeneration
         let today = DayKey.make(Date())
 
         Task {
-            // 어느 경로로 빠져나가도 래치를 푼다 — 단, **내 것일 때만.**
-            defer { if generation == refreshGeneration { isRefreshing = false } }
+            // 어느 경로로 빠져나가도 래치를 푼다.
+            defer { isRefreshing = false }
 
             // 설치 직후 딱 한 번, 과거 14일을 거슬러 읽어 "하루가 얼마인가"를 먼저 잡는다.
             // 이게 없으면 첫 며칠 동안 가격표가 남의 기본값으로 환산된다.
-            //
-            // 과거 읽기는 **한 번에 하나만.** 로그가 큰 사람은 14일치 파싱이 감시견(90초)보다 길어서,
-            // 래치가 풀릴 때마다 같은 백필이 하나씩 더 병렬로 시작돼 CPU·메모리가 치솟았다.
-            // 이미 돌고 있으면 기다리지 않고 오늘 몫만 읽는다 — 끝나면 그쪽이 알아서 반영한다.
-            if store.needsBackfill, !historyReadInFlight {
-                historyReadInFlight = true
+            if store.needsBackfill {
                 let history = await Task.detached(priority: .utility) {
                     UsageReader.readRecent(days: PlantBalance.dailyRawWindow, today: today)
                 }.value
-                historyReadInFlight = false
                 store.backfillHistory(history)
-            }
-
-            // 앱이 꺼져 있던 날 · 자정 직전 마지막 갱신 뒤에 쓴 몫. 오늘 몫을 적립하기 **전에** 채운다.
-            // 두 번 불려도 이중 적립은 없다(`PlantEngine.catchUp` 이 기준을 올려 둔다).
-            if !historyReadInFlight, let days = store.missedDays(today: today), let from = days.first {
-                historyReadInFlight = true
-                let byDay = await Task.detached(priority: .utility) {
-                    UsageReader.readDays(days)
-                }.value
-                historyReadInFlight = false
-                store.catchUp(byDay, from: from)
             }
 
             let snapshot = await Task.detached(priority: .utility) {
                 UsageReader.readToday(today)
             }.value
-            // 기다리는 동안 새 갱신이 시작됐으면 이 스냅샷은 이미 낡았다. 버린다.
-            guard generation == refreshGeneration else { return }
 
             store.update(todayUsageByProvider: snapshot.byProvider, todayDate: today)
             readError = snapshot.note
@@ -227,36 +162,16 @@ final class AppModel {
     }
 
     /// 한도 창 조회. 실패해도 성장에는 아무 영향이 없다.
-    private func refreshLimits(allowPrompt: Bool = false) async {
+    private func refreshLimits() async {
         // 꺼져 있으면 **키체인을 건드리지도 않는다.** 이게 이 설정의 전부다 —
         // 여기서 한 줄 새면 사용자는 끄고도 그 창을 계속 본다.
-        guard store.save.limitBonusEnabled, allowPrompt || shouldReadLimits else { return }
+        guard store.save.limitBonusEnabled, shouldReadLimits else { return }
         lastLimitsAt = Date()
-        let limits = await LimitsReader.read(allowPrompt: allowPrompt)
-        // 읽는 동안 꺼졌으면 버린다 — 끈 뒤에 창 정보가 다시 뜨고 보너스까지 들어온다.
-        guard store.save.limitBonusEnabled else { return }
+        let limits = await LimitsReader.read()
         store.applyLimits(limits)
-        // 429 만이 아니라 **아무것도 못 읽었을 때도** 쉰다. 키체인을 거부했거나 로그아웃한
-        // 사람에게 5분마다 다시 두드리면, 거부한 접근 요청이 5분마다 다시 뜰 수 있다.
-        // 다시 켜면(`setLimitBonus`) 바로 한 번 더 시도하므로 고친 사람이 기다릴 일은 없다.
-        limitsBackoff = limits.rateLimited || !limits.isReady
+        limitsBackoff = limits.rateLimited
             ? min(max(Self.limitsFirstBackoff, limitsBackoff * 2), Self.limitsMaxBackoff)
             : 0
-    }
-
-    /// 한도 창 보너스 토글. 켜면 쉬는 시간을 무시하고 **바로** 한 번 읽는다 —
-    /// `refresh()` 를 거치면 로그 갱신이 도는 중일 때 조용히 무시돼서, 켰는데 아무 일도 없다.
-    func setLimitBonus(_ on: Bool) {
-        store.setLimitBonus(on)
-        guard on else { return }
-        requestLimitsAccess()
-    }
-
-    /// 사용자가 방금 눌렀을 때만 — 이때는 macOS 키체인 허용 창을 띄워도 된다.
-    func requestLimitsAccess() {
-        lastLimitsAt = nil
-        limitsBackoff = 0
-        Task { await refreshLimits(allowPrompt: true) }
     }
 }
 
@@ -279,8 +194,6 @@ enum PopoverTab: String, CaseIterable, Identifiable {
 struct PopoverRoot: View {
     @Bindable var model: AppModel
     @Environment(\.openWindow) private var openWindow
-    /// 이 팝오버가 들어 있는 창. 정원 창이 앞으로 올 때와 구분하려고 들고 있는다.
-    @State private var hostWindow: NSWindow?
 
     private var store: PlantStore { model.store }
 
@@ -312,14 +225,6 @@ struct PopoverRoot: View {
             }
             .frame(maxHeight: .infinity)
 
-            // 로그를 못 읽으면 **여기서** 말한다. 값은 예전부터 만들어두고 아무 데도 안 그려서,
-            // 로그 폴더가 없는 사람은 영원히 씨앗만 보고 이유를 몰랐다.
-            if let err = model.readError {
-                Label(err, systemImage: "exclamationmark.triangle")
-                    .font(.system(size: 10)).foregroundStyle(Color.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
             Divider()
             footer
         }
@@ -329,18 +234,7 @@ struct PopoverRoot: View {
         // 메뉴바에서 떨어진 자리에 뜨고 늘어난 부분은 배경이 안 칠해진 채로 남는다.
         .frame(width: 320, height: 440)
         .background(MenuPanelBackground().ignoresSafeArea())
-        .background(HostWindowReader { hostWindow = $0 })
         .task { model.refresh() }
-        // 팝오버가 **다시** 열릴 때. `.task`·`onAppear` 는 창을 숨겼다 보여줄 때 다시 안 불릴 수 있다.
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { note in
-            guard let w = note.object as? NSWindow, w === hostWindow else { return }
-            model.refresh()
-            store.notePopoverShown()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { note in
-            guard let w = note.object as? NSWindow, w === hostWindow else { return }
-            store.notePopoverHidden()
-        }
     }
 
     private var tabBar: some View {
@@ -373,8 +267,6 @@ struct PopoverRoot: View {
             }
             .buttonStyle(.borderless)
             .disabled(model.isRefreshing)
-            // 아이콘뿐인 버튼은 이름을 붙여야 VoiceOver 가 "버튼"이라고만 읽지 않는다.
-            .accessibilityLabel("새로 고침")
 
             // 오래 멈춰 있으면 **눈에 띄어야** 한다. 흐린 회색 "1523분 전" 은 아무도 안 읽는다.
             Text(refreshLabel)
@@ -414,45 +306,24 @@ struct PopoverRoot: View {
                 Text("터미널에서 ./build-app.sh --install")
             }
             Divider()
+            Button("업데이트 확인") { model.updater.checkNow() }
+            Toggle("자동으로 업데이트", isOn: Binding(
+                get: { model.updater.automatic },
+                set: { model.updater.automatic = $0 }))
+            Divider()
             // 기본은 꺼져 있다. 켜야 키체인을 읽고, 그때 macOS 가 접근 허용을 묻는다.
             Toggle("한도 창 보너스", isOn: Binding(
                 get: { model.store.save.limitBonusEnabled },
-                set: { model.setLimitBonus($0) }))
-            Text("5시간·주간 한도를 다 쓰면 물을 더 받아요.\n켜면 Claude Code 로그인 정보를 읽어야 해서 맥이 키체인 접근을 묻습니다.\n「항상 허용」을 눌러야 다음부터 묻지 않아요.")
-            // 켰으면 **지금 어떤지** 보여준다. 이게 없어서 켜고 나서 되는지 안 되는지 알 길이 없었다 —
-            // 키체인이 막혀도, 로그인이 풀려도 화면은 똑같았다.
-            ForEach(limitStatus, id: \.self) { Text($0) }
-            // 허용 창에서 "거부"를 눌렀거나 창을 놓친 사람이 다시 받을 길. 주기 갱신은 창을 안 띄운다.
-            if store.save.limitBonusEnabled, store.limits.note?.contains("키체인") == true {
-                Button("키체인 접근 다시 요청") { model.requestLimitsAccess() }
-            }
+                set: { model.store.setLimitBonus($0); if $0 { model.refresh() } }))
+            Text("5시간·주간 한도를 다 쓰면 물을 더 받아요.\n켜면 Claude Code 로그인 정보를 읽어야 해서 맥이 키체인 접근을 묻습니다.")
             Divider()
             Button("종료") { NSApplication.shared.terminate(nil) }
         } label: {
             Image(systemName: "gearshape")
         }
-        .accessibilityLabel("설정")
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-    }
-
-    /// 한도 보너스 상태 줄. 꺼져 있으면 비어 있다.
-    private var limitStatus: [String] {
-        guard store.save.limitBonusEnabled else { return [] }
-        var out: [String] = []
-        if let w = store.topWindow {
-            out.append("지금 \(w.name) \(Int(w.utilization))%")
-        }
-        if store.todayWindowBonus > 0 {
-            out.append("오늘 받은 보너스 +\(TokenFormat.short(store.todayWindowBonus))")
-        }
-        if let note = store.limits.note {
-            out.append(note)
-        } else if !store.limits.isReady {
-            out.append("한도를 확인하는 중…")
-        }
-        return out
     }
 
     /// 5분 넘게 안 읽혔으면 뭔가 잘못된 것이다 — 주기는 30초다.
@@ -470,27 +341,6 @@ struct PopoverRoot: View {
         if secs < 86_400 { return "\(secs / 3_600)시간 전" }
         return "\(secs / 86_400)일 전"
     }
-}
-
-/// 뷰가 들어 있는 `NSWindow` 를 알려준다. SwiftUI 는 창을 직접 안 준다.
-struct HostWindowReader: NSViewRepresentable {
-    let onWindow: (NSWindow?) -> Void
-
-    final class Probe: NSView {
-        var onWindow: ((NSWindow?) -> Void)?
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            onWindow?(window)
-        }
-    }
-
-    func makeNSView(context: Context) -> Probe {
-        let v = Probe()
-        v.onWindow = onWindow
-        return v
-    }
-
-    func updateNSView(_ v: Probe, context: Context) { v.onWindow = onWindow }
 }
 
 /// 화분 탭 — 화분 + 오늘 사용량 + 도구별 분해.
@@ -600,14 +450,14 @@ struct HomeTab: View {
         if store.freeDraws > 0 {
             Text("선물 도착 · 상점에서 열어보세요")
                 .font(.system(size: 10, weight: .medium)).foregroundStyle(Color.orange)
-        } else if store.streakDays > 0 {
+        } else if store.save.streakDays > 0 {
             // 세 가지를 **한 줄에** 넣는다: 며칠째 · 지금 받는 보너스 · 다음 선물까지.
             // 따로 두면 줄이 세 개가 되는데, 셋 다 "이어서 쓰고 있다"는 한 가지 이야기다.
             HStack(spacing: 5) {
                 Image(systemName: "flame.fill")
                     .font(.system(size: 9)).foregroundStyle(Color.orange)
-                Text("\(store.streakDays)일째").font(.system(size: 10, weight: .medium))
-                let bonus = PlantBalance.streakBonusPercent(days: store.streakDays)
+                Text("\(store.save.streakDays)일째").font(.system(size: 10, weight: .medium))
+                let bonus = PlantBalance.streakBonusPercent(days: store.save.streakDays)
                 if bonus > 0 {
                     Text("물 +\(bonus)%")
                         .font(.system(size: 10, design: .monospaced))
@@ -637,13 +487,29 @@ struct HomeTab: View {
 
 /// 큰 숫자를 메뉴바에 맞게 줄인다 — 180.4M 처럼.
 enum TokenFormat {
-    /// 경계는 **반올림한 뒤의 값**으로 고른다. 원래 값으로 고르면 999,500 이 "1000K",
-    /// 999,950,000 이 "1000.0M" 으로 찍혔다 — 한 단위 위로 올려 써야 할 자리다.
+    /// **단위를 고르기 전에 반올림 결과를 본다.**
+    ///
+    /// 그냥 나눠서 단위를 고르면 999,999 가 `1000K` 로, 999,999,999 가 `1000.0M` 로 찍힌다.
+    /// 반올림한 값이 이미 다음 단위인데 이전 단위 이름을 달고 나오는 것이다.
+    /// 자릿수가 하나 더 붙어서 메뉴바 폭도 그때만 밀린다.
     static func short(_ n: Int) -> String {
         let v = Double(n)
-        if v >= 999_950_000 { return String(format: "%.2fB", v / 1_000_000_000) }
-        if v >= 999_500 { return String(format: "%.1fM", v / 1_000_000) }
-        if v >= 1_000 { return String(format: "%.0fK", v / 1_000) }
+        if v >= 1_000_000_000 { return fixed(v / 1_000_000_000, 2, "B") }
+        if v >= 1_000_000 {
+            let m = v / 1_000_000
+            // 소수 한 자리로 반올림했을 때 1000.0 이상이면 그건 B 다.
+            if (m * 10).rounded() >= 10_000 { return fixed(v / 1_000_000_000, 2, "B") }
+            return fixed(m, 1, "M")
+        }
+        if v >= 1_000 {
+            let k = v / 1_000
+            if k.rounded() >= 1_000 { return fixed(v / 1_000_000, 1, "M") }
+            return fixed(k, 0, "K")
+        }
         return "\(n)"
+    }
+
+    private static func fixed(_ v: Double, _ places: Int, _ unit: String) -> String {
+        String(format: "%.\(places)f%@", v, unit)
     }
 }

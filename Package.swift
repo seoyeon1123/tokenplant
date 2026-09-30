@@ -13,9 +13,17 @@ import PackageDescription
 let package = Package(
     name: "TokenPlant",
     platforms: [.macOS(.v14)],
+    dependencies: [
+        // 자동 업데이트. **Apple Developer 계정 없이도 된다** —
+        // Developer ID 서명은 "가능하면" 권장이고, 없으면 EdDSA(ed25519) 서명으로 검증한다.
+        // ad-hoc 서명은 빌드마다 달라지는데 Sparkle 2 는 코드 서명이 안 맞아도
+        // EdDSA 가 맞으면 받아들인다. 잘못된 EdDSA 는 제대로 거부한다.
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
+    ],
     targets: [
         .executableTarget(
             name: "TokenPlant",
+            dependencies: [.product(name: "Sparkle", package: "Sparkle")],
             path: "Sources/TokenPlant"
         ),
         .testTarget(

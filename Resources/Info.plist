@@ -32,5 +32,27 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>MIT License. PokeTokenBar (chattymin) 의 구조를 따릅니다.</string>
+
+	<!-- ── 자동 업데이트 (Sparkle) ──────────────────────────────────
+	     이 앱은 메뉴바에 띄워놓고 잊어버리는 물건이다. 고장난 버전을 몇 주씩 쓰고 있어도
+	     아무도 모른다 — 만든 사람도 하루를 잃었다. 그래서 스스로 갱신해야 한다.
+
+	     Developer ID 서명은 없다(ad-hoc). Sparkle 2 는 코드 서명이 안 맞아도
+	     **EdDSA 서명이 맞으면** 업데이트를 받아들이므로 이 조합으로 동작한다.
+	     SUPublicEDKey 는 `build-app.sh` 가 sparkle-key.pub 에서 채운다. -->
+	<key>SUFeedURL</key>
+	<string>https://raw.githubusercontent.com/seoyeon1123/tokenplant/main/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>__ED_PUBKEY__</string>
+
+	<!-- 물어보지 않고 받아서 깐다. 사용자가 할 일을 만들지 않는 게 요점이다.
+	     끄고 싶으면 톱니 메뉴에서 끌 수 있다. -->
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
+	<!-- 하루 한 번. 더 자주 볼 이유가 없고, GitHub 에 괜히 자주 붙지 않는다. -->
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
 </dict>
 </plist>

@@ -72,11 +72,16 @@ echo "▸ $APP_NAME $VERSION 빌드 ($BUILD_NUM)"
 # 그래서 배열 대신 문자열로 두고 일부러 단어 분리시킨다(플래그에 공백이 없어 안전하다).
 ARCH_ARGS="--arch arm64 --arch x86_64"
 
+# Sparkle.framework 를 번들 안(`Contents/Frameworks`)에서 찾게 한다.
+# SwiftPM 은 앱 번들을 모르니 rpath 를 안 넣어준다 — 없으면 실행 즉시
+# "Library not loaded: @rpath/Sparkle.framework/Versions/B/Sparkle" 로 죽는다.
+LINK_ARGS="-Xlinker -rpath -Xlinker @executable_path/../Frameworks"
+
 # `mktemp -t 접두사` 는 BSD(macOS)와 GNU 가 문법이 다르다. XXXXXX 를 직접 주면 양쪽 다 된다.
 BUILD_LOG="$(mktemp "${TMPDIR:-/tmp}/tokenplant-build.XXXXXX")"
 trap 'rm -f "$BUILD_LOG"' EXIT
 
-if ! swift build -c release $ARCH_ARGS > "$BUILD_LOG" 2>&1 < /dev/null; then
+if ! swift build -c release $ARCH_ARGS $LINK_ARGS > "$BUILD_LOG" 2>&1 < /dev/null; then
   # 실패 이유를 정규식으로 알아맞히려 들지 않는다 — "Search.swift ... not found" 같은
   # 진짜 컴파일 에러가 arch 문제로 오인돼서 엉뚱한 재시도를 한다.
   # 대신 한 줄만 보여주고 이 기계 아키텍처로 다시 해본다. 그래도 실패하면
@@ -84,14 +89,15 @@ if ! swift build -c release $ARCH_ARGS > "$BUILD_LOG" 2>&1 < /dev/null; then
   echo "  universal 빌드 실패 — 이 기계 아키텍처로만 다시 시도합니다"
   grep -m1 "error:" "$BUILD_LOG" | sed 's/^/    /' || true
   ARCH_ARGS=""
-  if ! swift build -c release > "$BUILD_LOG" 2>&1 < /dev/null; then
+  if ! swift build -c release $LINK_ARGS > "$BUILD_LOG" 2>&1 < /dev/null; then
     echo "▸ 빌드 실패:" >&2
     cat "$BUILD_LOG" >&2
     exit 1
   fi
 fi
 
-BIN="$(swift build -c release $ARCH_ARGS --show-bin-path < /dev/null)/$APP_NAME"
+BIN_DIR="$(swift build -c release $ARCH_ARGS $LINK_ARGS --show-bin-path < /dev/null)"
+BIN="$BIN_DIR/$APP_NAME"
 [[ -f "$BIN" ]] || { echo "실행 파일이 없습니다: $BIN" >&2; exit 1; }
 
 # ── 2. 번들 조립 ────────────────────────────────────────────────
@@ -106,7 +112,31 @@ if [[ ! -f Resources/AppIcon.icns ]] && command -v python3 >/dev/null; then
 fi
 [[ -f Resources/AppIcon.icns ]] && cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 
+# Sparkle.framework 를 번들에 넣는다. SwiftPM 은 링크만 하고 복사는 안 해준다.
+#
+# XCFramework 안에서 **이 기계용 슬라이스**를 고른다. universal 빌드면
+# macos-arm64_x86_64 가 맞고, 한 아키텍처만 빌드해도 같은 슬라이스로 돌아간다.
+SPARKLE_FW="$(find .build -type d -name 'Sparkle.framework' -path '*macos*' 2>/dev/null | head -1)"
+if [[ -z "$SPARKLE_FW" ]]; then
+  echo "▸ Sparkle.framework 를 못 찾았습니다 — swift package resolve 를 먼저 돌려보세요." >&2
+  exit 1
+fi
+mkdir -p "$APP/Contents/Frameworks"
+# `-R` 은 심볼릭 링크를 따라가 버린다. 프레임워크는 Versions/Current 가 링크라
+# 따라가면 구조가 무너지고 서명이 깨진다. ditto 는 그대로 옮긴다.
+ditto "$SPARKLE_FW" "$APP/Contents/Frameworks/Sparkle.framework"
+
+# 공개키는 저장소에 두고(공개해도 되는 값이다) 비밀키는 키체인에만 있다.
+if [[ -f sparkle-key.pub ]]; then
+  ED_PUBKEY="$(tr -d '[:space:]' < sparkle-key.pub)"
+else
+  ED_PUBKEY=""
+  echo "▸ sparkle-key.pub 이 없습니다 — 이 빌드는 자동 업데이트를 못 받습니다." >&2
+  echo "  만드는 법은 RELEASE.md 의 「자동 업데이트」 를 보세요." >&2
+fi
+
 sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD_NUM/" \
+    -e "s|__ED_PUBKEY__|$ED_PUBKEY|" \
     Resources/Info.plist > "$APP/Contents/Info.plist"
 
 printf 'APPL????' > "$APP/Contents/PkgInfo"
@@ -119,7 +149,17 @@ printf 'APPL????' > "$APP/Contents/PkgInfo"
 # `--options runtime`(하드닝)은 **일부러 뺐다.** 공증할 때나 의미가 있는데,
 # ad-hoc 서명과 묶이면 라이브러리 검증에 걸려 앱이 조용히 죽는 일이 있다.
 # 공증을 붙일 때 같이 켜는 게 맞다.
-codesign --force --deep --sign - "$APP"
+# **안쪽부터** 서명한다. `--deep` 하나로 끝내면 프레임워크 안의 XPC 서비스와
+# Autoupdate.app 이 제대로 안 잡혀서, 업데이트를 깔려는 순간에야 실패한다.
+# 그때는 이미 남의 기계다 — 여기서 맞춰두는 게 훨씬 싸다.
+if [[ -d "$APP/Contents/Frameworks/Sparkle.framework" ]]; then
+  while IFS= read -r inner; do
+    codesign --force --sign - "$inner"
+  done < <(find "$APP/Contents/Frameworks/Sparkle.framework" \
+                \( -name '*.xpc' -o -name '*.app' \) -print)
+  codesign --force --sign - "$APP/Contents/Frameworks/Sparkle.framework"
+fi
+codesign --force --sign - "$APP"
 
 codesign --verify --deep --strict "$APP" && echo "▸ 서명 확인됨 (ad-hoc)"
 

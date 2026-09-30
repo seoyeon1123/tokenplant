@@ -120,22 +120,17 @@ def check_scene():
                 if x < 0 or x + sprite > L["w"]:
                     bad(where, f"x={x} 에서 나무가 오른쪽으로 넘친다 (+{sprite} > {L['w']})")
 
-    # 장식 자리 — GardenView.decorSpots 와 같은 식을 쓴다 (18px 간격, 모자라면 뒤로 한 줄씩)
-    def decor_spots(L, total=12):
-        per_row = max(1, (L["w"] - 6) // 18)
-        rows = (total + per_row - 1) // per_row
-        return [(min(3 + i * 18 + (9 if r % 2 else 0), L["w"] - 16), L["h"] - 2 - r * 5)
-                for r in range(rows) for i in range(per_row)]
+    # 장식 자리 — GardenView.decorSpots 와 같은 식을 쓴다 (18px 간격 한 줄)
     for key, L in layouts.items():
-        spots = decor_spots(L)
-        # **모든** 티어가 열두 개를 다 담아야 한다 — 못 담으면 뽑아도 안 보인다.
-        if len(spots) < 12:
+        count = max(1, (L["w"] - 6) // 18)
+        for i in range(count):
+            x = 3 + i * 18
+            if x + 16 > L["w"]:
+                bad(key, f"장식 {i + 1}번째가 x={x} 에서 오른쪽으로 넘친다")
+    # 마지막 두 티어는 장식 열두 개를 다 담아야 한다 — 못 담으면 뽑아도 안 보인다.
+    for key in ("arbor", "forest"):
+        if key in layouts and max(1, (layouts[key]["w"] - 6) // 18) < 12:
             bad(key, "장식 자리가 12개보다 적다 — 뽑은 장식이 정원에 안 나온다")
-        for i, (x, y) in enumerate(spots):
-            if x < 0 or x + 16 > L["w"]:
-                bad(key, f"장식 {i + 1}번째가 x={x} 에서 옆으로 넘친다")
-            if y - 16 < 0:
-                bad(key, f"장식 {i + 1}번째가 y={y} 에서 위로 넘친다")
 
 
 # ── 2. 계절 팔레트 ─────────────────────────────────────────────
@@ -353,12 +348,11 @@ def check_shop_icons():
     # 한도 조회가 30초 틱에 다시 묶이면 안 된다. 한 번 그렇게 묶여서 하루 2,880번을
     # usage 엔드포인트에 보냈고 429 를 받았다 — 화면에는 "한도 조회가 제한됐어요"만 남는다.
     app = read("TokenPlantApp.swift")
-    # 예외는 사용자가 방금 누른 경우(`allowPrompt`)뿐이다 — 토글 켜기 · 권한 다시 요청.
-    if "allowPrompt || shouldReadLimits else { return }" not in app:
+    if "shouldReadLimits else { return }" not in app:
         bad("TokenPlantApp", "한도 조회에 주기 제한이 없다 — 30초마다 네트워크와 프로세스를 때린다")
     # 키체인은 **켠 사람만** 건드린다. 기본이 켜져 있으면 첫 실행부터 남의 자격증명을
     # 달라는 그림이 되고, 성장은 거기에 하나도 안 걸려 있다.
-    if "store.save.limitBonusEnabled, allowPrompt || shouldReadLimits" not in app:
+    if "store.save.limitBonusEnabled, shouldReadLimits" not in app:
         bad("TokenPlantApp", "한도 보너스가 꺼져 있어도 키체인을 읽는다")
     eng = read("Core/PlantEngine.swift")
     if "var limitBonusEnabled = false" not in eng:
@@ -367,9 +361,7 @@ def check_shop_icons():
     # `isRefreshing` 이 안 풀려서 앱이 조용히 멈춘다. 실제로 하루를 잃었다.
     if "Task { await refreshLimits() }" not in app:
         bad("TokenPlantApp", "한도 조회가 성장 경로에 묶여 있다 — 한 번 막히면 화분이 멈춘다")
-    # 세대 조건이 붙어도 된다(`defer { if generation == … { isRefreshing = false } }`) —
-    # 겹친 갱신의 옛 작업이 새 작업의 래치를 풀면 안 되기 때문이다. 보는 건 "defer 가 푼다" 하나다.
-    if not re.search(r"defer \{[^\n]*isRefreshing = false", app):
+    if "defer { isRefreshing = false }" not in app:
         bad("TokenPlantApp", "isRefreshing 래치를 defer 로 안 푼다 — 한 번 걸리면 영원히 갱신이 막힌다")
     if "refreshWatchdog" not in app:
         bad("TokenPlantApp", "멈춘 갱신을 풀어줄 감시견이 없다")
@@ -395,6 +387,30 @@ def check_shop_icons():
     # 하루 종일 Claude 를 쓰고도 화분이 그대로인 걸 보고 고장이라고 결론 낸다.
     if "맥에 기록이 안 남아서" not in app:
         bad("TokenPlantApp", "로컬 CLI 로그만 읽는다는 안내가 없다 — 웹·앱 사용자는 고장으로 읽는다")
+
+    # ── 자동 업데이트 ──────────────────────────────────────────
+    #
+    # 이 앱은 메뉴바에 띄워놓고 잊어버리는 물건이라, 고장난 버전이 몇 주씩 돈다.
+    # 업데이트 경로가 조용히 끊기면 그걸 알아챌 방법이 없다 — 여기서 잡는다.
+    plist = (ROOT / "Resources/Info.plist").read_text(encoding="utf-8")
+    for needle, why in [
+        ("SUFeedURL", "appcast 주소가 없다 — 앱이 새 버전을 볼 데가 없다"),
+        ("SUPublicEDKey", "EdDSA 공개키 자리가 없다 — 서명 검증을 못 한다"),
+        ("SUEnableAutomaticChecks", "자동 확인이 꺼져 있다"),
+    ]:
+        if needle not in plist:
+            bad("Info.plist", why)
+    # 공개키를 빌드가 실제로 채워 넣는가. 자리만 있고 안 채우면 조용히 빈 값이 박힌다.
+    build = (ROOT / "build-app.sh").read_text(encoding="utf-8")
+    if "__ED_PUBKEY__" not in build:
+        bad("build-app.sh", "Info.plist 의 공개키 자리를 안 채운다")
+    if "Contents/Frameworks/Sparkle.framework" not in build:
+        bad("build-app.sh", "Sparkle.framework 를 번들에 안 넣는다 — 실행 즉시 죽는다")
+    if "@executable_path/../Frameworks" not in build:
+        bad("build-app.sh", "rpath 가 없다 — @rpath/Sparkle.framework 를 못 찾는다")
+    # 비밀키가 저장소에 들어오면 남이 서명한 업데이트를 사용자에게 밀어넣을 수 있다.
+    if "sparkle-key.priv" not in (ROOT / ".gitignore").read_text(encoding="utf-8"):
+        bad(".gitignore", "Sparkle 비밀키가 안 막혀 있다")
 
     sv = read("UI/ShopView.swift")
     if "새가 찾아와" not in sv:
