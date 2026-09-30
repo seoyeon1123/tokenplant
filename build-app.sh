@@ -139,8 +139,14 @@ if [[ $INSTALL -eq 1 ]]; then
   rm -rf "/Applications/$APP_NAME.app"
   cp -R "$APP" /Applications/
   echo "▸ /Applications/$APP_NAME.app 에 설치됨"
-  open "/Applications/$APP_NAME.app"
-  echo "▸ 실행했습니다. 메뉴바 오른쪽을 보세요."
+  # 실행 실패가 스크립트를 죽이면 안 된다. 설치는 이미 끝났는데 `&&` 로 이어붙인
+  # 뒤 명령(해시 뽑기 등)이 통째로 끊긴다 — 돌고 있던 구버전을 덮어쓰면
+  # LaunchServices 가 -600 을 내는 일이 실제로 있었다.
+  if open "/Applications/$APP_NAME.app" 2>/dev/null; then
+    echo "▸ 실행했습니다. 메뉴바 오른쪽을 보세요."
+  else
+    echo "▸ 설치는 됐는데 실행이 안 됐어요 — 응용 프로그램에서 직접 열어주세요."
+  fi
 else
   echo
   echo "  설치:  ./build-app.sh --install"
