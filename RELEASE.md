@@ -48,7 +48,9 @@ shasum -a 256 "dist/TokenPlant-$V.zip"        # cask 에 넣을 값
 #
 # **`dist/appcast/` 에 이번 zip 하나만 둔다.** generate_appcast 는 준 폴더의 아카이브를
 # 전부 훑어서 항목을 만드는데, dist/ 를 통째로 주면 옛 버전 zip 까지 appcast 에 들어간다.
-rm -f dist/appcast/*.zip
+# `rm -f dist/appcast/*.zip` 로 쓰면 zsh 에서 깨진다 — 매칭이 없으면
+# "no matches found" 로 **줄 전체를 죽여서** 뒤의 cp 가 안 돈다(bash 와 다르다).
+rm -rf dist/appcast && mkdir -p dist/appcast
 cp "dist/TokenPlant-$V.zip" dist/appcast/
 "$(find .build -name generate_appcast -type f | head -1)" \
   --download-url-prefix "https://github.com/seoyeon1123/tokenplant/releases/download/v$V/" \

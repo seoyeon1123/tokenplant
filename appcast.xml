@@ -1,0 +1,14 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>TokenPlant</title>
+        <item>
+            <title>0.2.4</title>
+            <pubDate>Thu, 01 Oct 2026 08:59:59 +0900</pubDate>
+            <sparkle:version>202610010858</sparkle:version>
+            <sparkle:shortVersionString>0.2.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/seoyeon1123/tokenplant/releases/download/v0.2.4/TokenPlant-0.2.4.zip" length="2425805" type="application/octet-stream" sparkle:edSignature="c/ya3WFUpAgqS2J4ARIPDGa1eouK/q218u5+JSlTHvKKX3DzKf3ofcmpuTmQszBZoBIsvEDBE133XiJdtkQSAw=="/>
+        </item>
+    </channel>
+</rss>
