@@ -209,8 +209,7 @@ enum LimitsReader {
         ]
         if !allowPrompt { applyNoUI(to: &attrQuery) }
 
-        var attrItem: CFTypeRef?
-        let attrStatus = SecItemCopyMatching(attrQuery as CFDictionary, &attrItem)
+        let (attrStatus, attrItem) = copyMatching(attrQuery, allowPrompt: allowPrompt)
         let accounts = accountNames(from: attrItem)
 
         // 계정 속성을 못 얻으면 스코프 없는 단건 읽기로 폴백한다 — 항목이 하나뿐인 흔한 경우는 이걸로 된다.
@@ -228,8 +227,7 @@ enum LimitsReader {
             if let account { query[kSecAttrAccount as String] = account }
             if !allowPrompt { applyNoUI(to: &query) }
 
-            var item: CFTypeRef?
-            let status = SecItemCopyMatching(query as CFDictionary, &item)
+            let (status, item) = copyMatching(query, allowPrompt: allowPrompt)
             if status == errSecInteractionNotAllowed { throw LimitsError.keychainInteractionNotAllowed }
             lastStatus = status
             guard status == errSecSuccess, let data = item as? Data else { continue }
@@ -278,6 +276,39 @@ enum LimitsReader {
         query[kSecUseAuthenticationContext as String] = context
         query[kSecUseAuthenticationUI as String] = uiFailPolicy as CFString
     }
+
+    /// 조회 한 번. `allowPrompt` 가 false 면 **레거시 키체인 창까지** 끄고 부른다.
+    ///
+    /// `applyNoUI` 의 두 키는 **데이터 보호 키체인**용이다. `Claude Code-credentials` 는
+    /// 파일 기반 로그인 키체인에 있고, 그쪽 ACL 창은 저 키들로 안 막힌다 — 사용자가 본
+    /// 창에 "'로그인' 키체인 암호를 입력하십시오" 라고 적힌 게 그 증거다.
+    /// 그 창을 막는 건 이 전역 스위치뿐이고, 대신 `errSecInteractionNotAllowed` 가 온다.
+    ///
+    /// 끄고 **반드시 되돌린다**. 프로세스 전역이라 안 되돌리면 Sparkle 이든 뭐든
+    /// 이 앱 안에서 키체인을 쓰는 다른 코드가 전부 조용히 실패한다.
+    private static func copyMatching(_ query: [String: Any],
+                                     allowPrompt: Bool) -> (status: OSStatus, item: CFTypeRef?) {
+        var item: CFTypeRef?
+        guard !allowPrompt, let setAllowed = setInteractionAllowed else {
+            return (SecItemCopyMatching(query as CFDictionary, &item), item)
+        }
+        _ = setAllowed(false)
+        defer { _ = setAllowed(true) }
+        return (SecItemCopyMatching(query as CFDictionary, &item), item)
+    }
+
+    /// `SecKeychainSetUserInteractionAllowed` — 10.10 에서 deprecated 라 직접 부르면
+    /// 빌드마다 경고가 뜬다. 바로 위 `uiFailPolicy` 와 같은 방식으로 심볼로 찾아 쓴다.
+    /// `dlclose` 는 안 한다 — 돌려받은 함수 포인터를 계속 들고 있어야 한다.
+    /// 인라인으로 쓰면 `(@convention(c) …).self` 를 파서가 못 읽는다. 이름을 붙여 둔다.
+    private typealias SetKeychainUI = @convention(c) (DarwinBoolean) -> OSStatus
+
+    private static let setInteractionAllowed: SetKeychainUI? = {
+        let path = "/System/Library/Frameworks/Security.framework/Security"
+        guard let handle = dlopen(path, RTLD_NOW),
+              let symbol = dlsym(handle, "SecKeychainSetUserInteractionAllowed") else { return nil }
+        return unsafeBitCast(symbol, to: SetKeychainUI.self)
+    }()
 
     /// 테스트가 쿼리를 들여다볼 수 있게 — 키체인을 실제로 건드리지 않고 정책이 붙었는지만 본다.
     static func noUIQueryForTesting() -> [String: Any] {

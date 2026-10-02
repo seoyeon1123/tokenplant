@@ -161,6 +161,19 @@ final class AppModel {
         Task { await refreshLimits() }
     }
 
+    /// 사용자가 방금 켰을 때 **한 번만** 키체인 창을 허용한다.
+    ///
+    /// 주기 갱신은 계속 조용히 읽는다. 이 경로가 없으면 권한을 줄 길이 앱 안에 없어서
+    /// "키체인 접근 권한이 필요해요" 만 영원히 뜬다 — 안내문은 "맥이 묻는다" 고 적혀 있는데.
+    /// 창에서 **항상 허용**을 누르면 그 뒤로는 조용한 읽기도 통과한다.
+    func requestLimitsPermission() {
+        Task {
+            let limits = await LimitsReader.read(allowPrompt: true)
+            store.applyLimits(limits)
+            lastLimitsAt = Date()
+        }
+    }
+
     /// 한도 창 조회. 실패해도 성장에는 아무 영향이 없다.
     private func refreshLimits() async {
         // 꺼져 있으면 **키체인을 건드리지도 않는다.** 이게 이 설정의 전부다 —
@@ -314,8 +327,11 @@ struct PopoverRoot: View {
             // 기본은 꺼져 있다. 켜야 키체인을 읽고, 그때 macOS 가 접근 허용을 묻는다.
             Toggle("한도 창 보너스", isOn: Binding(
                 get: { model.store.save.limitBonusEnabled },
-                set: { model.store.setLimitBonus($0); if $0 { model.refresh() } }))
-            Text("5시간·주간 한도를 다 쓰면 물을 더 받아요.\n켜면 Claude Code 로그인 정보를 읽어야 해서 맥이 키체인 접근을 묻습니다.")
+                set: { model.store.setLimitBonus($0); if $0 { model.requestLimitsPermission() } }))
+            Text("5시간·주간 한도를 다 쓰면 물을 더 받아요.\n켤 때 한 번만 맥이 키체인 접근을 묻습니다 — **항상 허용**을 누르면 다시 안 물어요.")
+            if model.store.save.limitBonusEnabled, model.store.limits.note != nil {
+                Button("키체인 권한 다시 요청") { model.requestLimitsPermission() }
+            }
             Divider()
             Button("종료") { NSApplication.shared.terminate(nil) }
         } label: {

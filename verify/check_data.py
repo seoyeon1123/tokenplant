@@ -357,6 +357,27 @@ def check_shop_icons():
     eng = read("Core/PlantEngine.swift")
     if "var limitBonusEnabled = false" not in eng:
         bad("PlantSave", "한도 보너스 기본값이 꺼짐이 아니다 — 첫 실행에 키체인 창이 뜬다")
+    # 키체인 창. `Claude Code-credentials` 는 **파일 기반 로그인 키체인**에 있고,
+    # 그쪽 ACL 창은 `kSecUseAuthenticationUI` 로 안 막힌다(그건 데이터 보호 키체인용이다).
+    # 실제로 사용자는 "'로그인' 키체인 암호를 입력하십시오" 창을 반복해서 봤다.
+    lr = read("Core/LimitsReader.swift")
+    if "SecKeychainSetUserInteractionAllowed" not in lr:
+        bad("LimitsReader", "레거시 키체인 UI 를 안 끈다 — 암호 창이 주기마다 다시 뜬다")
+    # 전역 스위치라 **반드시 되돌려야** 한다. 안 되돌리면 앱 안의 다른 키체인 사용이
+    # 전부 조용히 실패한다.
+    cm = lr[lr.index("private static func copyMatching"):]
+    cm = cm[: cm.index("\n    }")]
+    if "defer { _ = setAllowed(true) }" not in cm:
+        bad("copyMatching", "키체인 UI 를 끄고 안 되돌린다 — 프로세스 전역 스위치다")
+    if "guard !allowPrompt" not in cm:
+        bad("copyMatching", "allowPrompt 일 때도 UI 를 끈다 — 권한을 줄 길이 사라진다")
+    # 끄기만 하고 **켜줄 길이 없으면** "권한이 필요해요" 만 영원히 뜬다.
+    # 이 경로가 없어서 실제로 그 상태였다.
+    if "LimitsReader.read(allowPrompt: true)" not in app:
+        bad("TokenPlantApp", "키체인 권한을 요청하는 경로가 없다 — 사용자가 허용할 방법이 없다")
+    if "requestLimitsPermission" not in app:
+        bad("TokenPlantApp", "토글을 켤 때 권한 요청을 안 한다")
+
     # 한도 조회가 성장 경로와 **같은 Task** 에 있으면, codex 프로세스가 한 번 안 끝날 때
     # `isRefreshing` 이 안 풀려서 앱이 조용히 멈춘다. 실제로 하루를 잃었다.
     if "Task { await refreshLimits() }" not in app:
