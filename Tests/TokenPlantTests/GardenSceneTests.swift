@@ -80,12 +80,18 @@ final class GardenSceneTests: XCTestCase {
     }
 
     /// 장식 자리도 캔버스 안이어야 한다.
+    ///
+    /// 간격이 가진 개수에 따라 좁아지므로 **개수마다** 봐야 한다 — 한 개일 때만
+    /// 확인하면 열두 개일 때 오른쪽으로 넘치는 걸 못 잡는다.
     func testDecorSpotsStayInsideCanvas() {
         for layout in SceneLayout.all {
-            for spot in layout.decorSpots {
-                XCTAssertGreaterThanOrEqual(spot.x, 0, "\(layout.key)")
-                XCTAssertLessThan(spot.x, layout.width, "\(layout.key)")
-                XCTAssertLessThanOrEqual(spot.y, layout.height, "\(layout.key)")
+            for count in 1...DecorIcons.allKeys.count {
+                for spot in layout.decorSpots(count: count) {
+                    XCTAssertGreaterThanOrEqual(spot.x, 0, "\(layout.key) ×\(count)")
+                    XCTAssertLessThanOrEqual(spot.x + DecorIcons.size, layout.width,
+                                             "\(layout.key) ×\(count) 오른쪽으로 넘친다")
+                    XCTAssertLessThanOrEqual(spot.y, layout.height, "\(layout.key) ×\(count)")
+                }
             }
         }
     }
@@ -192,7 +198,7 @@ final class GardenSceneTests: XCTestCase {
     /// 장식 세 개가 서로 다른 자리에 놓여야 한다 — 같은 자리면 하나만 보인다.
     func testThreeDecorationsUseThreeDistinctSpots() {
         let layout = SceneLayout.byKey("forest")
-        let spots = layout.decorSpots
+        let spots = layout.decorSpots(count: 3)
         XCTAssertGreaterThanOrEqual(spots.count, 3)
         XCTAssertEqual(Set(spots.prefix(3).map(\.x)).count, 3, "장식 자리가 겹친다")
 
@@ -345,21 +351,33 @@ final class GardenSceneTests: XCTestCase {
         }
     }
 
-    /// 열두 개를 다 모았을 때 마지막 두 티어에서 전부 그려져야 한다.
-    /// 자리를 좌표로 박아뒀을 때는 넷째부터 조용히 안 그려졌다(`i < decorSpots.count` 에서 잘린다).
-    func testEveryDecorationFitsInTheLastTiers() {
-        // 이름은 그대로 두지만 이제 **모든 티어**를 본다 — 창가(72px)는 한 줄에 3자리뿐이라
-        // 넷째 장식부터 안 그려졌다.
+    /// 열두 개를 다 모아도 **하나도 안 숨어야** 한다.
+    ///
+    /// 예전엔 자리가 모자라면 안 그렸다. 안 그리면 끌 수도 없다 — 가지고 있고
+    /// "정원에 놓았어요" 라고 들었는데 보이지도 옮길 수도 없는 물건이 된다.
+    /// 이제 자리가 모자라면 마지막 칸에 겹쳐 세운다(겹친 건 끌어서 풀 수 있다).
+    ///
+    /// "모든 티어가 12자리" 는 더 이상 조건이 아니다 — 창가는 72px 이고 장식은
+    /// 16px 짜리 열두 개(192px)라 한 줄에 물리적으로 안 들어간다.
+    func testEveryDecorationIsPlacedInEveryTier() {
+        let keys = DecorIcons.allKeys
+        var previous = 0
         for key in ["sill", "balc", "bed", "yard", "green", "arbor", "forest"] {
             let layout = SceneLayout.byKey(key)
-            XCTAssertGreaterThanOrEqual(layout.decorSpots.count, DecorIcons.allKeys.count,
-                                        "\(key) 장식 자리 \(layout.decorSpots.count)개 < 12")
-            // 자리가 캔버스를 벗어나면 그 장식은 잘려 나간다.
-            for (n, spot) in layout.decorSpots.enumerated() {
-                XCTAssertLessThanOrEqual(spot.x + DecorIcons.size, layout.width,
-                                         "\(key) \(n + 1)번째 자리가 오른쪽으로 넘친다")
-                XCTAssertLessThanOrEqual(spot.y, layout.height, "\(key) \(n + 1)번째 자리가 아래로 넘친다")
+            let placed = layout.decorPlacements(keys, positions: [:])
+            XCTAssertEqual(placed.count, keys.count, "\(key) 에서 장식이 사라진다")
+            for (n, p) in placed.enumerated() {
+                XCTAssertLessThanOrEqual(p.spot.x + DecorIcons.size, layout.width,
+                                         "\(key) \(n + 1)번째가 오른쪽으로 넘친다")
+                XCTAssertLessThanOrEqual(p.spot.y, layout.height,
+                                         "\(key) \(n + 1)번째가 아래로 넘친다")
             }
+            // 티어가 커질수록 자리도 늘어야 한다. 줄어들면 정원을 넓혔는데
+            // 장식이 겹치기 시작한다 — 창틀 턱에만 뒷줄을 뒀던 안이 그랬다.
+            let slots = layout.decorSpots(count: keys.count).count
+            XCTAssertGreaterThanOrEqual(slots, previous,
+                                        "\(key)(\(slots)칸)가 앞 티어(\(previous)칸)보다 좁다")
+            previous = slots
         }
     }
 
@@ -378,7 +396,7 @@ final class GardenSceneTests: XCTestCase {
         XCTAssertEqual(cat.spot.y, 90)
         // 옮긴 장식은 기본 자리를 안 먹는다 — 그래야 남은 장식이 앞으로 당겨진다.
         let others = moved.filter { $0.key != "cat" }.map(\.spot.x)
-        XCTAssertEqual(others, Array(layout.decorSpots.prefix(2)).map(\.x))
+        XCTAssertEqual(others, Array(layout.decorSpots(count: keys.count).prefix(2)).map(\.x))
     }
 
     /// 옮긴 자리가 실제로 **격자에 그려져야** 한다. 저장만 되고 안 그려지면 옮긴 게 아니다.

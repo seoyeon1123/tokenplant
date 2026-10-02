@@ -31,6 +31,10 @@ WATCHED = {
     "LoginItem", "Water", "Nutrient", "AppModel",
     "BloomMotif", "BloomLayout", "BloomBud", "BloomArt", "BloomAnchor", "BloomSize",
     "GardenSprites", "GardenComposer", "PlantSpriteBuilder", "PlantPalette",
+    # 정원 장면 — 여기가 비어 있어서 `decorSpots` 가 프로퍼티에서 함수로 바뀐 걸
+    # 아무도 못 잡았다. 검사기는 **안 보는 타입에 대해서는 아무 말도 안 한다.**
+    "SceneLayout", "SeasonPalette", "DecorIcons", "BirdIcon", "BirdFlight",
+    "IconPalette",
 }
 
 DECL = re.compile(
@@ -136,6 +140,93 @@ ENUMS = {"ShopItem", "PlantEvent", "PlantStateKind", "PlantRarity", "WindowKind"
 # 이 코드베이스에서 이 이름들은 **항상** 뷰나 모델의 인스턴스 프로퍼티다.
 INSTANCE_NAMES = ("store", "model", "self.store", "self.model")
 
+
+
+# ── 프로퍼티였던 걸 함수로 바꿨을 때 ──────────────────────────────
+#
+# `var decorSpots` 를 `func decorSpots(count:)` 로 바꾸고 호출부를 안 고쳐서
+# **테스트 타깃이 통째로 컴파일 실패**했다. 앱 타깃은 멀쩡해서 `swift build` 는
+# 통과했고, 릴리스 직전 `swift test` 에서야 터졌다.
+#
+# 기존 `Type.member` 검사로는 못 잡는다 — 실패한 자리는 전부 `layout.decorSpots`,
+# 즉 **인스턴스 변수 위의 멤버**라 타입 이름이 안 붙는다.
+#
+# 그래서 이름으로 역추적한다: 감시 타입들 통틀어 **함수로만 선언된** 이름이
+# 괄호 없이 쓰이면 의심한다. 키패스(`\.x`)와 함수를 값으로 넘기는 자리는 뺀다.
+
+FUNC_DECL = re.compile(r"^\s*(?:[\w@()]+\s+)*func\s+([A-Za-z_]\w*)\s*\(")
+VAR_DECL = re.compile(r"^\s*(?:[\w@()]+\s+)*(?:var|let)\s+([A-Za-z_]\w*)\b")
+# 앞이 역슬래시면 키패스(`\.x`)다. 그 외에는 전부 멤버 접근이다 —
+# 처음엔 앞에 낱말 문자가 오면 건너뛰게 썼는데, 그러면 `layout.decorSpots`
+# 처럼 **변수 위의 멤버**가 전부 빠져서 정작 잡으려던 걸 못 잡았다.
+MEMBER_USE = re.compile(r"(?<!\\)\.([a-z]\w*)")
+
+
+def func_only_members(root):
+    """감시 타입 안에서 **함수로만** 선언된 이름. 같은 이름의 프로퍼티가
+    어딘가에 하나라도 있으면 뺀다 — 괄호 없이 써도 되는 자리가 생기니까."""
+    funcs, props = set(), set()
+    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+        blocks, lines = type_blocks(str(f))
+        for name, lo, hi in blocks:
+            for i in range(lo, min(hi + 1, len(lines))):
+                code = lines[i].split("//")[0]
+                m = FUNC_DECL.match(code)
+                if m and name in WATCHED:
+                    funcs.add(m.group(1))
+                # 프로퍼티는 **감시 밖 타입까지** 본다. 같은 이름이 어딘가에서
+                # 프로퍼티면 괄호 없이 쓰는 게 정상인 자리가 있다는 뜻이다
+                # (`IconPalette.color(_:)` 때문에 `p.color` 가 잡혔다).
+                m = VAR_DECL.match(code)
+                if m:
+                    props.add(m.group(1))
+    # 어느 타입에서든 프로퍼티로도 쓰이는 이름은 제외한다.
+    return funcs - props
+
+
+# 표준 라이브러리 프로퍼티와 이름이 겹치는 것들. 우리 타입에 같은 이름의
+# **함수**가 있으면(`PlantSave.count(_:)`) 배열의 `.count` 까지 전부 잡힌다.
+STDLIB_PROPS = {"count", "first", "last", "isEmpty", "min", "max", "sorted",
+                "reversed", "indices", "keys", "values", "description",
+                "rawValue", "hashValue", "startIndex", "endIndex"}
+
+ANY_CASE = re.compile(r"\bcase\s+([a-z]\w*)")
+FOR_IN = re.compile(r"^\s*for\b.*\bin\b")
+
+
+def enum_case_names(root):
+    """enum case 이름 — `.streakGift` 같은 자리는 멤버 접근이 아니라 case 다."""
+    out = set()
+    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+        for line in f.read_text(encoding="utf8").split("\n"):
+            for m in ANY_CASE.finditer(line.split("//")[0]):
+                out.add(m.group(1))
+    return out
+
+
+def paren_less_calls(root, func_only):
+    func_only = func_only - STDLIB_PROPS - enum_case_names(root)
+    out = []
+    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+        lines = f.read_text(encoding="utf8").split("\n")
+        for n, line in enumerate(lines, 1):
+            code = line.split("//")[0]
+            for m in MEMBER_USE.finditer(code):
+                name = m.group(1)
+                if name not in func_only:
+                    continue
+                rest = code[m.end():].lstrip()
+                # `)`·`,` 는 함수를 값으로 넘기는 자리
+                # (`allSatisfy(save.decorations.contains)`) — 정상이다.
+                if rest[:1] in ("(", ")", ","):
+                    continue
+                # `{` 는 보통 후행 클로저(`contains { ... }`)라 정상인데,
+                # **for-in 의 대상**일 때는 아니다 — `for spot in layout.decorSpots {`
+                # 가 정확히 그 모양이고, 그게 이번에 컴파일을 깬 줄이다.
+                if rest[:1] == "{" and not FOR_IN.match(code):
+                    continue
+                out.append((str(f.relative_to(root)), n, name, line.strip()))
+    return out
 
 SWITCH = re.compile(r"^\s*switch\b")
 BARE_CASE = re.compile(r"\.(\w+)")
@@ -653,6 +744,14 @@ def main(root):
             total += 1
             print(f"  {path}:{n}  {msg}")
             print(f"      {text[:110]}")
+
+    # 프로퍼티였던 게 함수가 됐는데 호출부가 안 따라온 자리
+    bare = paren_less_calls(root, func_only_members(root))
+    for path, n, name, text in bare:
+        print(f"\n`{name}` 는 함수인데 괄호 없이 쓰인다 (프로퍼티였다가 바뀐 것):")
+        print(f"  {path}:{n}")
+        print(f"      {text[:110]}")
+    total += len(bare)
 
     known = sum(len(v) for v in declared.values())
     print(f"\n감시 타입 {len(declared)}개 · 선언 {known}개 · 의심 {total}건")
