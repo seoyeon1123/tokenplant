@@ -155,7 +155,11 @@ enum GardenComposer {
         // 그루와 같은 규칙으로 **최근 것부터** 놓는다. 앞에서 자르면 창가(자리 3개)에서
         // 넷째로 뽑은 장식이 안 보이는데 화면은 "정원에 놓았어요" 라고 말한다.
         // 열두 개를 다 모을 수 있는데 초반 티어의 자리는 3~5개뿐이라 늘 걸리는 구간이다.
-        for (key, spot) in layout.decorPlacements(decorations, positions: positions) {
+        // **뒤에 선 것부터 그린다.** 장식이 한 줄일 때는 순서가 상관없었는데, 뒷줄이
+        // 생기면서 목록 순서대로 그리면 뒤에 선 장식이 앞 장식을 덮는다. 끌어서 뒤로
+        // 보낸 장식도 마찬가지다 — 기준선이 위일수록 멀리 있는 것이다.
+        for (key, spot) in layout.decorPlacements(decorations, positions: positions)
+            .sorted(by: { $0.spot.y < $1.spot.y }) {
             guard key != hiding, let art = DecorIcons.grid(key, frame: frame) else { continue }
             for (gy, row) in art.enumerated() {
                 for (gx, ch) in row.enumerated() where ch != "." {
@@ -206,7 +210,7 @@ extension SceneLayout {
     /// 클릭 판정이 갈려서 엉뚱한 명패가 뜬 적이 있어서, 여기서는 처음부터 한 곳으로 모은다.
     func decorPlacements(_ keys: [String],
                          positions: [String: [Int]]) -> [(key: String, spot: (x: Int, y: Int))] {
-        let spots = decorSpots
+        let spots = decorSpots(count: keys.count)
         // 자리를 옮긴 장식은 기본 자리를 안 먹는다 — 그래야 옮긴 만큼 남은 장식이 앞으로 당겨진다.
         var freeIndex = 0
         var out: [(String, (Int, Int))] = []
@@ -215,37 +219,40 @@ extension SceneLayout {
                 out.append((key, (p[0], p[1])))
                 continue
             }
-            guard freeIndex < spots.count else { continue }   // 자리가 모자라면 안 그린다
-            out.append((key, spots[freeIndex]))
+            // 자리가 모자라도 **버리지 않는다.** 예전엔 여기서 `continue` 해서 안 그렸는데,
+            // 안 그리면 끌 수도 없다 — 가지고 있고 "정원에 놓았어요" 라고 들었는데
+            // 보이지도 않고 옮길 수도 없는 물건이 된다. 겹쳐 서는 건 끌어서 풀 수 있다.
+            out.append((key, spots[min(freeIndex, spots.count - 1)]))
             freeIndex += 1
         }
         return out
     }
 
-    /// 장식 자리 — 캔버스 너비에서 **계산**한다. 좌표를 셋만 박아뒀을 때는
-    /// 장식이 열두 개가 되자 넷째부터 조용히 안 그려졌다(`i < decorSpots.count` 에서 잘린다).
+    /// 장식 자리 — 앞쪽 바닥 **한 줄**. 간격은 가진 개수에 맞춰 좁아진다.
     ///
-    /// 앞쪽 바닥 한 줄에 18px 간격으로 들어가는 만큼 만든다. 그루보다 먼저 그려지므로
-    /// 앞줄 나무에 일부 가리는데, 그게 오히려 겹쳐 보여서 자연스럽다.
+    /// 좌표를 셋만 박아뒀을 때는 장식이 열두 개가 되자 넷째부터 조용히 안 그려졌다.
+    /// 그래서 계산식으로 바꿨는데, 18px 고정이면 작은 화단이 5칸이라 금세 또 넘친다.
     ///
-    /// 한 줄로 모자라면 **뒤로 한 줄씩 더** 쌓는다(5px 위, 반 칸 엇갈림). 한 줄만 두었을 때는
-    /// 창가(72px)에 3자리뿐이라 넷째 장식부터 상점은 "놓았어요" 하는데 정원 어디에도 없었고,
-    /// 물받이가 잘리면 새도 안 왔다. 열두 개가 다 들어갈 때까지 줄을 늘린다.
-    var decorSpots: [(x: Int, y: Int)] {
-        let baseY = height - 2
-        let step = DecorIcons.size + 2
-        let perRow = max(1, (width - 6) / step)
-        let rows = (DecorIcons.allKeys.count + perRow - 1) / perRow
-        var out: [(x: Int, y: Int)] = []
-        for r in 0..<rows {
-            let shift = r % 2 == 1 ? step / 2 : 0
-            for i in 0..<perRow {
-                let x = min(3 + i * step + shift, width - DecorIcons.size)
-                out.append((x: x, y: baseY - r * 5))
-            }
-        }
-        return out
+    /// **줄을 늘리는 쪽은 두 번 다 실패했다.** 위로 18px 올렸더니 뒷줄이 지평선을 넘어
+    /// 버섯이 허공에 떴고, 땅 위로 12px만 올렸더니 이번엔 **그루 줄과 겹쳤다** —
+    /// 작은 화단은 그루 기준선이 34, 첫 그루가 x=12 인데 뒷줄 첫 칸이 정확히 거기다.
+    /// 땅이 104px 인 티어에서는 그루와 장식이 이미 바닥을 나눠 쓰고 있어서 줄을 더
+    /// 넣을 자리가 없다. 창틀 턱에만 뒷줄을 둔 안도 버렸다 — 화단(7)이 베란다(10)보다
+    /// 적어져서 **정원을 넓혔는데 장식이 겹치기 시작한다.**
+    ///
+    /// 그래서 줄은 하나로 두고 **간격을 좁힌다.** 장식 대부분은 16칸 중 9~12칸만
+    /// 쓰므로 14px 까지는 실제로 닿지 않는다(제일 넓은 징검다리만 2px 겹친다).
+    /// 간격이 변하는 건 눈에 안 띄고, 자리가 생기는 건 눈에 띈다.
+    func decorSpots(count: Int) -> [(x: Int, y: Int)] {
+        let step = max(Self.decorMinStep,
+                       min(Self.decorMaxStep, (width - 6) / max(1, count)))
+        let per = max(1, (width - 6) / step)
+        return (0..<per).map { (x: 3 + $0 * step, y: height - 2) }
     }
+
+    /// 장식 간격의 위아래. 위는 여유 있을 때의 간격, 아래는 **실제로 닿기 시작하는** 선.
+    static let decorMaxStep = DecorIcons.size + 2
+    static let decorMinStep = DecorIcons.size - 2
 
     /// 새가 앉는 자리. **모이통이나 물받이가 있어야** 나온다 — 없으면 nil.
     ///
@@ -397,9 +404,6 @@ struct GardenView: View {
                     .offset(x: CGFloat(p.x) * scale,
                             y: CGFloat(p.baseline - GardenSprites.size) * scale)
                     .help(p.entry.nickname ?? p.entry.species.name)
-                    // 투명 사각형이라 이름이 없으면 VoiceOver 가 이름 없는 "버튼"을 30개 읽는다.
-                    .accessibilityLabel(p.entry.nickname ?? p.entry.species.name)
-                    .accessibilityHint("명패 보기")
                 }
 
                 // 장식 — **끌어서 옮긴다.** 나무는 뒷줄·앞줄이 있어서 아무 데나 놓으면
@@ -429,12 +433,7 @@ struct GardenView: View {
                                     dragBy = .zero
                                 }
                         )
-                        // 쉬는 장식은 투명한 채로 나무 위에 얹혀 있다. 그냥 누르면 **뒤에 있는 나무**의
-                        // 명패를 연다 — 예전엔 앞줄 나무 아랫부분을 눌러도 장식이 클릭을 먹어서 안 열렸다.
-                        .onTapGesture { if let e = tree(behind: d.spot) { selected = e } }
                         .help("\(DecorIcons.name(d.key)) — 끌어서 옮기세요")
-                        .accessibilityLabel(DecorIcons.name(d.key))
-                        .accessibilityHint("끌어서 옮길 수 있어요 · 자리 되돌리기로 원래 자리에 놓여요")
                 }
             }
             .frame(width: CGFloat(layout.width) * scale,
@@ -452,16 +451,6 @@ struct GardenView: View {
     private var shownEntries: [GardenEntry] {
         let all = store.save.garden
         return all.count > layout.slotCount ? Array(all.suffix(layout.slotCount)) : all
-    }
-
-    /// 장식 자리 뒤에 겹쳐 있는 나무. 여럿이면 **앞줄**(나중에 그린 것)을 고른다.
-    private func tree(behind spot: (x: Int, y: Int)) -> GardenEntry? {
-        let cx = spot.x + DecorIcons.size / 2
-        let cy = spot.y - DecorIcons.size / 2
-        return placements.last { p in
-            cx >= p.x && cx < p.x + GardenSprites.size
-                && cy >= p.baseline - GardenSprites.size && cy < p.baseline
-        }?.entry
     }
 
     private var placements: [(entry: GardenEntry, x: Int, baseline: Int)] {
@@ -516,9 +505,8 @@ struct GardenView: View {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [UTType.png]
         panel.nameFieldStringValue = "garden-\(store.save.gardenCount)그루.png"
-        // 취소는 실패가 아니다 — 예전엔 같은 guard 에 걸려 "저장하지 못했어요"가 떴다.
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        guard let tiff = image.tiffRepresentation,
+        guard panel.runModal() == .OK, let url = panel.url,
+              let tiff = image.tiffRepresentation,
               let rep = NSBitmapImageRep(data: tiff),
               let data = rep.representation(using: .png, properties: [:]) else {
             exportNote = "저장하지 못했어요"
@@ -620,7 +608,7 @@ struct GardenCanvas: View {
     let scale: CGFloat
     /// 지금 끌고 있는 장식. 격자에서 빼야 손가락을 따라오는 유령과 겹치지 않는다.
     var hiding: String? = nil
-    /// 창이 뒤에 있거나 팝오버가 닫혀 있으면 멈춘다.
+    /// 창이 뒤에 있으면 멈춘다. 팝오버 미니뷰는 열려 있을 때만 존재하므로 늘 true.
     var active: Bool = true
 
     @State private var frame = 0

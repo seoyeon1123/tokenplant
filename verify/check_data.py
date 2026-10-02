@@ -120,16 +120,16 @@ def check_scene():
                 if x < 0 or x + sprite > L["w"]:
                     bad(where, f"x={x} 에서 나무가 오른쪽으로 넘친다 (+{sprite} > {L['w']})")
 
-    # 장식 자리 — GardenView.decorSpots 와 같은 식을 쓴다 (18px 간격 한 줄)
+    # 장식 자리 — GardenView.decorSpots 와 같은 식 (한 줄, 간격 14~18px)
     for key, L in layouts.items():
-        count = max(1, (L["w"] - 6) // 18)
-        for i in range(count):
-            x = 3 + i * 18
-            if x + 16 > L["w"]:
-                bad(key, f"장식 {i + 1}번째가 x={x} 에서 오른쪽으로 넘친다")
+        for step in (14, 18):
+            for i in range(max(1, (L["w"] - 6) // step)):
+                x = 3 + i * step
+                if x + 16 > L["w"]:
+                    bad(key, f"간격 {step}px 에서 장식 {i + 1}번째가 x={x} 로 넘친다")
     # 마지막 두 티어는 장식 열두 개를 다 담아야 한다 — 못 담으면 뽑아도 안 보인다.
     for key in ("arbor", "forest"):
-        if key in layouts and max(1, (layouts[key]["w"] - 6) // 18) < 12:
+        if key in layouts and max(1, (layouts[key]["w"] - 6) // 14) < 12:
             bad(key, "장식 자리가 12개보다 적다 — 뽑은 장식이 정원에 안 나온다")
 
 
@@ -287,7 +287,7 @@ def check_shop_icons():
 
     # 뽑기 자리 — 캔버스에 열두 개가 들어가는가(GardenView.decorSpots 와 같은 식)
     gv = read("UI/GardenView.swift")
-    if "DecorIcons.size + 2" not in gv:
+    if "DecorIcons.size + 2" not in gv or "DecorIcons.size - 2" not in gv:
         bad("decorSpots", "장식 자리가 계산식이 아니다 — 늘어난 장식이 조용히 안 그려진다")
     # 그리기·클릭·끌기가 **같은 함수**를 봐야 한다. 갈리면 엉뚱한 장식이 잡힌다
     # (정원 나무에서 이미 한 번 그렇게 어긋났다).
@@ -656,8 +656,77 @@ def check_garden_blooms():
                     break
 
 
+def check_decor_reachable():
+    """산 장식은 **보이고 옮길 수 있어야** 한다.
+
+    두 번 같은 방식으로 깨졌다. 한 번은 정원 창을 3그루까지 잠가서(= 석 달),
+    한 번은 자리가 모자라면 장식을 안 그려서. 둘 다 "가지고 있는데 손댈 수 없는"
+    물건을 만들고, 둘 다 화면은 "정원에 놓았어요" 라고 말한다.
+    """
+    coll = read("UI/CollectionView.swift")
+    at = coll.index('Button("크게 보기")')
+    # 버튼 뒤 modifier 사슬만 본다 — 같은 파일 다른 곳의 disabled 에 걸리면 안 된다.
+    chain = coll[at:at + 400]
+    if ".disabled(" in chain.split("\n            }")[0]:
+        bad("CollectionView",
+            "'크게 보기' 가 다시 잠겼다 — 장식을 끌어 놓을 수 있는 창은 여기뿐이다")
+
+    view = read("UI/GardenView.swift")
+    body = view[view.index("func decorPlacements("):]
+    body = body[: body.index("\n    /// 장식 자리")]
+    # `continue` 는 **옮겨둔 자리를 쓰는 가지 하나뿐**이어야 한다. 그 뒤에 또 있으면
+    # 어떤 조건에서 장식을 건너뛴다는 뜻이고, 건너뛴 장식은 끌 수도 없다.
+    # 주석은 빼고 센다 — 이 규칙을 만든 자리의 주석에 `continue` 라고 적혀 있어서
+    # 그대로 세면 자기 설명에 자기가 걸린다.
+    code = "\n".join(l for l in body.split("\n") if not l.lstrip().startswith("//"))
+    if code.count("continue") != 1:
+        bad("decorPlacements",
+            f"건너뛰는 가지가 {code.count('continue')}개다 — 안 그린 장식은 끌 수도 없다")
+
+    # 줄은 **하나**다. 늘리는 쪽은 두 번 다 깨졌다(뒷줄이 하늘로 / 그루 줄과 겹침).
+    # 대신 간격이 가진 개수에 맞춰 좁아져야 한다 — 고정 18px 면 화단이 5칸에서 멈춘다.
+    spec = view[view.index("func decorSpots(count:"):][:900]
+    # 상수 이름만 찾으면 식을 통째로 바꿔도 안 걸린다(`step = decorMaxStep` 으로
+    # 고정해봤더니 min(...) 안에 남은 이름 때문에 그대로 통과했다).
+    # **개수로 나누는지**를 본다 — 그게 "좁아진다" 의 전부다.
+    if "decorMinStep" not in spec or "decorMaxStep" not in spec:
+        bad("decorSpots", "간격이 개수에 따라 안 좁아진다 — 고정 간격이면 작은 티어가 금세 넘친다")
+    if "/ max(1, count)" not in spec:
+        bad("decorSpots", "간격이 가진 개수를 안 본다 — 고정 간격이면 작은 티어가 금세 넘친다")
+    # 반환 타입에도 `y:` 가 있으므로 **본문만** 센다. 자리를 만드는 식이 둘이면 줄이 둘이다.
+    body = spec[spec.index("{"):spec.index("\n    }")]
+    if "height - 2" not in body or body.count("y:") != 1:
+        bad("decorSpots", "장식 줄이 하나가 아니다 — 늘린 줄은 그루와 겹치거나 하늘로 뜬다")
+
+    size = 16
+    lo = int(re.search(r"decorMinStep = DecorIcons.size - (\d+)", view).group(1))
+    hi = int(re.search(r"decorMaxStep = DecorIcons.size \+ (\d+)", view).group(1))
+    mn, mx = size - lo, size + hi
+    # 간격을 실제 그림 폭 밑으로 내리면 장식끼리 **겹쳐 보인다**. 제일 넓은 장식
+    # (징검다리 16칸)만 2px 닿는 선까지가 한계다.
+    if mn < size - 2:
+        bad("decorSpots", f"최소 간격 {mn}px 는 장식 그림({size}px)을 겹친다")
+
+    scene = read("UI/GardenScene.swift")
+    at = scene.index("static let all: [SceneLayout]")
+    block = scene[at:scene.index("static func byKey", at)]
+    prev, prev_key = 0, None
+    for chunk in block.split(".init(key: ")[1:]:
+        key = re.match(r'"(\w+)"', chunk).group(1)
+        w = int(re.search(r"width: (\d+)", chunk).group(1))
+        slots = max(1, (w - 6) // mn)
+        # **티어가 커질수록 자리도 늘어야 한다.** 줄어들면 정원을 넓혔는데 장식이
+        # 겹치기 시작한다 — 창틀 턱에만 뒷줄을 뒀던 안이 정확히 그랬다(화단 7 < 베란다 10).
+        if slots < prev:
+            bad("decorSpots", f"{key}({slots}칸)가 {prev_key}({prev}칸)보다 좁다")
+        prev, prev_key = slots, key
+        if slots < 3:
+            bad("decorSpots", f"{key} 의 장식 자리가 {slots}개뿐이다")
+
+
 def main():
     check_scene()
+    check_decor_reachable()
     check_palettes()
     check_sprites()
     check_characters()

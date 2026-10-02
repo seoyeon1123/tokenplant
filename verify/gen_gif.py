@@ -69,6 +69,32 @@ def seasons():
 
 OUTLINE = "#2b2016"
 
+# 장식 자리 — `SceneLayout.decorSpots` / `decorPlacements` 포팅.
+#
+# 예전엔 compose 안에서 `3 + i*step` 한 줄로 때웠다. Swift 가 두 줄이 되고 넘치면
+# 겹쳐 세우게 바뀐 뒤에도 여기는 그대로라, **앱과 다른 그림**을 GIF·영상·미리보기로
+# 내보내고 있었다. 6번째 장식은 캔버스 밖으로 나가 잘리기까지 했다.
+# 정원을 설명하는 그림이 정원과 다르면 그 그림은 거짓말이다.
+MIN_STEP, MAX_STEP = DECOR.SIZE - 2, DECOR.SIZE + 2
+
+
+def decor_spots(lay, count):
+    w = lay["width"]
+    step = max(MIN_STEP, min(MAX_STEP, (w - 6) // max(1, count)))
+    return [(3 + i * step, lay["height"] - 2) for i in range(max(1, (w - 6) // step))]
+
+
+def decor_placements(lay, keys, positions=None):
+    spots, free, out = decor_spots(lay, len(keys)), 0, []
+    for key in keys:
+        p = (positions or {}).get(key)
+        if p and len(p) == 2:
+            out.append((key, (p[0], p[1])))
+            continue
+        out.append((key, spots[min(free, len(spots) - 1)]))
+        free += 1
+    return out
+
 
 def blend(hex_a, hex_b, t):
     a, b = SP.rgb(hex_a), SP.rgb(hex_b)
@@ -153,14 +179,14 @@ def compose(lay, season, trees, decor, bird, frame):
                     put(x + gx, baseline + gy - 16,
                         blend(hexv, season["sky"], haze) if haze > 0 else hexv)
     # 장식 — 그루보다 **나중에**. 앞쪽 바닥에 서니까 앞줄 나무보다 앞이다.
-    # 자리 계산식은 SceneLayout.decorSpots 와 같다(16+2 간격 한 줄)
-    step, base_y = DECOR.SIZE + 2, H - 2
-    for i, key in enumerate(decor):
+    # 뒤에 선 것부터 그린다(`GardenComposer` 와 같다). 뒷줄이 생기고 나서는
+    # 목록 순서대로 그리면 뒤에 선 장식이 앞 장식을 덮는다.
+    for key, (sx, sy) in sorted(decor_placements(lay, decor), key=lambda p: p[1][1]):
         art = frame_art(key, frame)
         for gy, row in enumerate(art):
             for gx, ch in enumerate(row):
                 if ch != ".":
-                    put(3 + i * step + gx, base_y + gy - DECOR.SIZE, PAL[ch])
+                    put(sx + gx, sy + gy - DECOR.SIZE, PAL[ch])
 
     # 새 — 장식 **다음에** 그린다
     if bird:
@@ -224,9 +250,10 @@ def main():
     # 모이통을 가운데 두는 건 **구도 때문**이다. 맨 왼쪽에 두면 새가 오른쪽에서 날아와
     # 화면 끝에 앉아 바깥을 보고 끝난다 — 앱에서는 사용자가 끌어서 옮기면 되는 일이다.
     decor = ["windmill", "cat", "feeder", "birdbath", "mushroom"]
-    step, base_y = DECOR.SIZE + 2, lay["height"] - 2
-    perch = (3 + decor.index("feeder") * step, base_y)     # 모이통 앞
-    start = (lay["width"] + 4, base_y - 16)               # 화면 밖 오른쪽
+    # 새는 **모이통이 실제로 놓인 자리** 앞에 선다. 자리를 직접 계산하면
+    # 장식이 뒷줄로 밀렸을 때 새만 앞줄에 남는다.
+    perch = dict(decor_placements(lay, decor))["feeder"]
+    start = (lay["width"] + 4, perch[1] - 16)             # 화면 밖 오른쪽
 
     images = []
     for f in range(args.frames):

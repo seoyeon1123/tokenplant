@@ -39,10 +39,8 @@ struct CollectionView: View {
 
             // 정원 창과 **같은** 캔버스를 쓴다 — 미니뷰가 큰 창과 달라 보이면 버그처럼 읽힌다.
             //
-            // 미니뷰도 움직인다. 정원 창은 3그루부터 열리는데 바람개비·고양이·새는 그 전에
-            // 나온다 — 여기서 안 돌면 처음 몇 달 동안 움직이는 걸 아무도 못 본다.
+            // 미니뷰도 움직인다. 여기서 안 돌면 도감 탭에 멈춘 그림이 걸려 있게 된다.
             // 이 뷰는 도감 탭이 열려 있을 때만 존재하므로, 탭을 옮기면 저절로 멈춘다.
-            // 팝오버를 닫으면 뷰는 숨기만 하고 살아 있어서 `active` 로 따로 멈춘다.
             GardenCanvas(layout: layout,
                          season: store.save.gardenCount >= 10 ? .current : .byKey("spring"),
                          entries: store.save.garden,
@@ -51,8 +49,7 @@ struct CollectionView: View {
                          positions: store.save.decorPositions,
                          currentPotStage: store.pot?.stageIndex,
                          currentSpecies: store.species,
-                         scale: miniScale,
-                         active: store.popoverVisible)
+                         scale: miniScale)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .frame(maxWidth: .infinity, alignment: .center)
 
@@ -64,13 +61,19 @@ struct CollectionView: View {
                     Text("정원 만렙").font(.system(size: 10, weight: .medium)).foregroundStyle(.pink)
                 }
                 Spacer()
+                // **잠그지 않는다.** 3그루까지 막아뒀었는데, 3그루는 석 달이다.
+                // 그 사이에도 상점에서 장식을 사고 뽑기로 얻는다 — 그런데 **장식을
+                // 끌어서 놓을 수 있는 곳이 이 창뿐**이라, 산 물건을 석 달 동안
+                // 배치할 수가 없었다. 실제로 그게 불편하다는 말을 들었다.
+                //
+                // 막아둔 이유는 "빈 정원을 보여주기 민망하다" 였을 텐데, 0그루에도
+                // 창에는 키우는 화분과 장식이 있다. 빈 화면이 아니다.
                 Button("크게 보기") { openGarden() }
                     .controlSize(.small)
                     .buttonStyle(.borderedProminent)
-                    .disabled(store.save.gardenCount < 3)
             }
-            if store.save.gardenCount < 3 {
-                Text("작은 화단(3그루)부터 정원 창이 열려요.")
+            if !store.save.decorations.isEmpty {
+                Text("크게 보기에서 장식을 끌어서 옮길 수 있어요.")
                     .font(.system(size: 9)).foregroundStyle(.tertiary)
             }
         }
@@ -163,8 +166,8 @@ struct CollectionView: View {
             }
             row("부은 총 물", "\(store.save.waterSinceInstall.formatted()) mL")
             row("누적 원시 토큰", TokenFormat.short(store.save.rawSinceInstall))
-            if store.streakDays > 0 {
-                row("연속 사용", "\(store.streakDays)일 (+\(PlantBalance.streakBonusPercent(days: store.streakDays))%)")
+            if store.save.streakDays > 0 {
+                row("연속 사용", "\(store.save.streakDays)일 (+\(PlantBalance.streakBonusPercent(days: store.save.streakDays))%)")
             }
         }
     }
