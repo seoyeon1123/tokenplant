@@ -4,6 +4,14 @@
         <title>TokenPlant</title>
         <item>
             <title>0.2.5</title>
+            <pubDate>Fri, 02 Oct 2026 15:08:11 +0900</pubDate>
+            <sparkle:version>202610021508</sparkle:version>
+            <sparkle:shortVersionString>0.2.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/seoyeon1123/tokenplant/releases/download/v0.2.5/TokenPlant-0.2.5.zip" length="2422904" type="application/octet-stream" sparkle:edSignature="rwq1t62q6USoP+Je6SQIXk5TgRmV4NSFSn2VoK2aWFH2PKlVdRq736EX6/u6rnGYQUbZ7z74Ez0uzrrK64NLBQ=="/>
+        </item>
+        <item>
+            <title>0.2.5</title>
             <pubDate>Fri, 02 Oct 2026 14:53:45 +0900</pubDate>
             <sparkle:version>202610021453</sparkle:version>
             <sparkle:shortVersionString>0.2.5</sparkle:shortVersionString>
