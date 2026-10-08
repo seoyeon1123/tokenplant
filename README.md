@@ -1,57 +1,68 @@
 # TokenPlant
 
-AI 코딩 토큰 사용량으로 식물을 키우는 macOS 메뉴바 앱.
+*[한국어](README.ko.md)*
 
-**토큰을 쓰면 식물이 자란다.** 아무것도 안 눌러도, 앱을 안 열어도.
-그리고 같은 토큰이 지갑에도 쌓여서, 거기서 물·거름·영양제를 사면 **더 빨리** 자란다.
-거목이 되면 정원으로 이식되고 화분에는 새 씨앗이 심긴다.
+A macOS menu bar app that grows a pixel-art plant from your AI coding token usage.
 
-정원에 놓은 것들은 **움직인다.** 바람개비가 돌고, 고양이가 꼬리를 흔들고,
-모이통이나 물받이를 놓으면 새가 날아와서 앉는다.
+**Spend tokens, and the plant grows.** You don't press anything. You don't even open the app.
+The same tokens also fill a wallet, and spending that on water, fertilizer and nutrient makes it grow **faster**.
+Once it's fully grown it gets transplanted into your garden and a new seed goes into the pot.
+
+Things you place in the garden **move**. A windmill turns, a cat flicks its tail, and if you put out
+a feeder or a birdbath, a bird flies in and perches there.
 
 <p align="center">
-  <img src="Resources/garden.gif" width="640" alt="움직이는 정원 — 새가 날아와 모이통 앞에 앉는다">
+  <img src="Resources/garden.gif" width="640" alt="A living garden — a bird flies in and lands by the feeder">
   <br>
-  <img src="Resources/preview-garden.png" width="640" alt="정원 티어별 배경">
+  <img src="Resources/preview-garden.png" width="640" alt="Garden backgrounds by tier">
   <br>
-  <img src="Resources/preview-species.png" width="640" alt="종 × 성장 단계">
+  <img src="Resources/preview-species.png" width="640" alt="Species x growth stage">
 </p>
 
-## 설치
+## Requirements
 
-### Homebrew (권장)
+- macOS 14 (Sonoma) or later
+- You use Claude Code or Codex — their logs are the water
+
+> **It only counts CLI usage.** Claude Code and Codex write session logs to your disk; the web and
+> desktop apps don't. If you mostly work in the browser there's nothing on disk to read, and your
+> plant won't grow. I lost a day to this myself before working out that the app was reading
+> correctly and there was simply nothing there.
+
+## Install
+
+### Homebrew (recommended)
 
 ```bash
 brew install --cask seoyeon1123/tap/tokenplant
 ```
 
-메뉴바 오른쪽에 화분이 뜨면 끝이다. 톱니 메뉴에서 **로그인 시 자동 실행**을 켜두면
-재부팅해도 알아서 뜬다.
+A pot shows up on the right of your menu bar and that's the whole setup. Turn on **Launch at login**
+in the gear menu and it comes back after a reboot.
 
-업데이트:
+The app updates itself (Sparkle, once a day). To do it by hand:
 
 ```bash
 brew upgrade --cask tokenplant
 ```
 
-### 직접 다운로드
+### Direct download
 
-[Releases](https://github.com/seoyeon1123/tokenplant/releases/latest) 에서
-`TokenPlant.zip` 을 받아 압축을 풀고 `TokenPlant.app` 을 `/Applications` 로 끌어다 놓는다.
+Grab `TokenPlant.zip` from [Releases](https://github.com/seoyeon1123/tokenplant/releases/latest),
+unzip it, and drag `TokenPlant.app` into `/Applications`.
 
-이 앱은 Apple 공증(notarization)을 받지 않았다. 그래서 첫 실행에 Gatekeeper 경고가 뜬다.
-둘 중 하나로 넘긴다.
+This app is not notarized by Apple, so the first launch trips Gatekeeper. Either:
 
-- Finder 에서 앱을 **우클릭 → 열기** (두 번 눌러야 할 수도 있다)
-- 또는 터미널에서:
+- **Right-click → Open** in Finder (you may need to do it twice), or
+- run:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/TokenPlant.app
 ```
 
-Homebrew 로 깔면 이 과정이 자동으로 처리돼서 경고를 볼 일이 없다.
+Homebrew handles this for you, which is why it's the recommended path.
 
-### 소스에서 빌드
+### Build from source
 
 ```bash
 git clone https://github.com/seoyeon1123/tokenplant.git
@@ -59,120 +70,134 @@ cd tokenplant
 ./build-app.sh --install
 ```
 
-Swift 툴체인이 필요하다(Xcode 또는 `xcode-select --install`).
-Apple Silicon·Intel 둘 다 담은 universal 바이너리로 만들고, 실패하면 이 기계 것만 만든다.
+Needs a Swift toolchain (Xcode, or `xcode-select --install`). It builds a universal binary for
+Apple Silicon and Intel, and falls back to this machine's architecture if that fails.
 
-## 요구사항
+## What it reads
 
-- macOS 14 (Sonoma) 이상
-- Claude Code 또는 Codex 를 쓰고 있을 것 — 그 로그가 물이 된다
+Everything that feeds growth comes from **logs already on your disk**, read incrementally once
+every 30 seconds.
 
-## 무엇을 읽는가
-
-성장에 쓰는 값은 전부 **이미 내 디스크에 있는 로그**에서 나온다. 30초마다 한 번,
-증분으로만 읽는다.
-
-| 읽는 것 | 무엇 때문에 |
+| What | Why |
 |---|---|
-| `~/.claude/projects/**/*.jsonl` | 메시지별 토큰 사용량 |
-| `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | 같음 |
-| Keychain (Claude Code 가 넣어둔 OAuth 토큰) | 공식 한도 조회 — **선택** |
+| `~/.claude/projects/**/*.jsonl` | per-message token usage |
+| `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | same |
+| Keychain (the OAuth token Claude Code stores) | official rate-limit lookup — **optional, off by default** |
 
-- 저장은 `~/Library/Application Support/TokenPlant/state.json` **한 파일**뿐이다.
-- 네트워크는 **한 곳**만 탄다 — `api.anthropic.com/api/oauth/usage`. 내 한도 잔량을
-  내 토큰으로 조회하는 것이고, 이 앱은 그 외에 아무 데도 접속하지 않는다.
-  분석·수집·텔레메트리 없음.
-- 대화 내용은 읽지 않는다. `message.usage` 의 **숫자만** 본다.
-- 키체인 접근을 거절해도 성장은 그대로 돌아간다. 한도 창 보너스만 안 붙는다.
+- State lives in **one file**: `~/Library/Application Support/TokenPlant/state.json`
+- It touches the network in exactly **one place** — `api.anthropic.com/api/oauth/usage`, to ask for
+  your own rate limits with your own token. Nowhere else. No analytics, no telemetry, no account.
+- It does not read your conversations. Only the **numbers** in `message.usage`.
+- Decline the keychain prompt and growth carries on exactly the same. You just don't get the
+  rate-limit window bonus.
 
-## 어떻게 자라나
+## How it grows
 
 ```
-                ┌─▶ 가중 환산 mL ──▶ 화분이 저절로 자란다
-쓴 토큰 ────────┤
-                └─▶ 원시 토큰 ────▶ 지갑 · 물 / 거름 / 영양제를 산다 ─▶ 가속
+                ┌─▶ weighted mL ──▶ the pot fills on its own
+tokens spent ───┤
+                └─▶ raw tokens ──▶ wallet · buy water / fertilizer / nutrient ─▶ speed-up
 
-씨앗 → 발아 → 떡잎 → 어린잎 → 자란 줄기 → 꽃봉오리 → 첫 꽃 → 만개 → 열매 → 거목
-창가 0 → 베란다 1 → 작은 화단 3 → 뒷마당 6 → 온실 10 → 수목원 18 → 비밀의 숲 30 (그루)
+seed → sprout → cotyledon → young leaf → stem → bud → first bloom → full bloom → fruit → great tree
+sill 0 → balcony 1 → flower bed 3 → backyard 6 → greenhouse 10 → arboretum 18 → secret forest 30 (trees)
 ```
 
-두 물길은 **서로 뺏지 않는다.** 아이템을 사도 이미 자란 건 줄지 않고,
-안 사도 화분은 계속 찬다. 다 자라는 데 걸리는 목표치는 심을 때 그 사람의 실제
-사용량에 맞춰 정해진다 — 아무것도 안 사면 약 4주, 아이템을 잘 쓰면 2주쯤.
+The two streams **never take from each other**. Buying items doesn't shrink what already grew, and
+not buying anything doesn't stall the pot. Roughly four weeks per plant if you buy nothing, about
+two if you spend well.
 
-지갑은 **설치 후 계속 누적**되고 자정에 초기화되지 않는다. 다만 시간이 아니라
-토큰을 써야 늘어난다. 값은 "며칠치"로 매겨져 있고, 하루치가 얼마인지는 앱이 직접 잰다.
+The wallet **accumulates from install** and isn't reset at midnight. It grows with tokens, not with
+time.
 
-설치하면 **씨앗부터** 시작한다. 설치 전에 쓴 토큰은 소급하지 않는다 —
-과거 로그는 "이 사람 하루가 얼마인가"를 재는 데만 쓰고, 성장과 지갑에는 안 들어간다.
+You start from a **seed** on install. Tokens you spent before installing aren't credited —
+past logs are only used to measure what a day looks like for you.
 
-숫자를 왜 그렇게 정했는지는 [DESIGN.md](DESIGN.md) 에 있다.
+## Why prices are measured in days, not tokens
 
-## 들어 있는 것
+This is the one balance decision worth spelling out.
 
-- **메뉴바** — 전용 16×16 단계 스프라이트 + 오늘 원시 토큰
-- **화분** — 화분이 저절로 차는 게 주인공이고, 그 아래 지갑과 "지금 뭘 살 수 있나".
-  물방울·거름 알갱이·단계 교차 페이드. 창고의 물·거름·영양제를 여기서 바로 쓴다.
-  화분 슬롯을 사면 두 그루가 되고, **물은 양쪽에 똑같이** 들어간다
-- **상점** — 11품목, 값은 원시 토큰. 모든 값에 **며칠치**가 붙고,
-  부족분은 "하루 더 쓰면 / 2일 더 쓰면"으로, 거름·영양제는 같은 값으로 물을 샀을 때와
-  견줘 이득인지 손해인지 실수치로 보여준다. 장식은 상점 3종 + 뽑기 9종으로 모두 12종이고,
-  뽑기는 중복 없이 나온다
-- **창고** — 개수·지속 효과 남은 일수·씨앗 예약
-- **연속 사용 선물** — 토큰을 쓴 날이 3·7·14·30일 이어지면 장식 뽑기 1회.
-  날짜가 아니라 **쓴 날**을 세고, 하루 빠지면 처음부터 다시 센다
-- **도감** — 정원 미니뷰 + 15종 도감 + 기록
-- **정원 창** — 7티어 절차적 배경, 계절 팔레트, 그루 클릭 명패,
-  장식 끌어서 자리 정하기, PNG 내보내기(18그루 해금)
+Hardcoding thresholds ties the whole game to one person's usage. If a plant costs 300M tokens,
+that's a month for someone burning 100M a day and a year and a half for someone burning 5M.
+The second person isn't playing a slow game, they're playing a broken one, and they quit before
+stage five.
 
-## 개발
+So the target is **28 days**, and the token amount is derived from *your own* 14-day measured
+average. Shop prices are all defined as multiples of a day too. Everyone gets about one plant a
+month no matter how heavy a user they are. The upside is there's no difficulty slider to get wrong;
+the downside is you can't speed the clock up.
+
+Filling the garden (30 trees) takes about two years. That's deliberate — it isn't a game you grind,
+it's a thing that's quietly bigger every few weeks.
+
+The reasoning behind the rest of the numbers is in [DESIGN.md](DESIGN.md) *(Korean)*.
+
+## What's in it
+
+- **Menu bar** — a dedicated 16x16 sprite per stage, plus today's raw token count
+- **Pot** — the pot filling by itself is the main event; under it, the wallet and what you can
+  afford right now. Water droplets, fertilizer grains, cross-fades between stages. Buy a pot slot
+  and you get two plants, and **water reaches both equally**
+- **Shop** — 11 items priced in raw tokens. Every price also shows **how many days' worth** it is,
+  shortfalls read as "one more day" / "two more days", and fertilizer and nutrient show whether
+  they actually beat spending the same amount on plain water. 12 decorations: 3 sold directly,
+  9 from a gacha box that never gives a duplicate
+- **Storage** — counts, days left on active effects, reserved seeds
+- **Streak gifts** — 3 / 7 / 14 / 30 consecutive days with token usage each give a decoration draw.
+  It counts **days you spent tokens**, not days on the calendar, and one missed day restarts it
+- **Collection** — garden mini-view, a 15-species dex, and a log
+- **Garden window** — 7 procedurally drawn tiers, seasonal palettes, click a tree for its nameplate,
+  drag decorations where you want them, PNG export (unlocked at 18 trees)
+
+## Development
 
 ```bash
 swift build
-swift test           # 330개
-swift run            # 번들 없이 바로 — 자동 실행 토글은 이때 안 보인다
+swift test           # 330 tests
+swift run            # straight from source, no bundle — the launch-at-login toggle is hidden here
 ```
 
-`Core/` 는 Foundation 전용이라(AppKit·SwiftUI 없음) UI 없이 밸런스만 먼저 테스트할 수 있다.
+`Core/` is Foundation-only (no AppKit, no SwiftUI), so the balance can be tested without any UI.
 
-### 컴파일러 없이 검증하기
+### Verifying without a compiler
 
-`verify/` 는 Swift 툴체인이 없는 환경에서 쓰는 검사기다. 타입 검사는 못 하지만
-리팩터로 반쪽만 지운 심볼과 밸런스 회귀는 여기서 잡힌다.
+`verify/` holds checkers for environments with no Swift toolchain. They can't typecheck, but they
+do catch half-deleted symbols after a refactor and balance regressions.
 
 ```bash
-python3 verify/check_syntax.py .    # tree-sitter-swift 파싱
-python3 verify/check_members.py .   # 없는 멤버 · 없는 case · 빠진 case
-python3 verify/check_data.py        # 스프라이트 격자 · 가격표 양언어 일치 · 테스트 리터럴
-python3 verify/run_tests.py         # 엔진 파이썬 포팅 + 단정 437개
-python3 verify/make_icon.py         # 스프라이트 → Resources/AppIcon.icns
-python3 verify/preview_species.py   # 종×단계 대조표 PNG — 픽셀아트는 보고 고쳐야 한다
-python3 verify/gen_motifs.py --write  # 파이썬 모티프 → Swift 코드 생성
-python3 verify/gen_decor.py --write   # 장식 스프라이트 → Swift 코드 생성
+python3 verify/check_syntax.py .    # tree-sitter-swift parse
+python3 verify/check_members.py .   # missing members · missing enum cases
+python3 verify/check_data.py        # sprite grids · price table parity across both languages
+python3 verify/run_tests.py         # engine ported to Python + 437 assertions
+python3 verify/make_icon.py         # sprites → Resources/AppIcon.icns
+python3 verify/preview_species.py   # species x stage contact sheet
+python3 verify/gen_motifs.py --write  # Python motifs → generated Swift
+python3 verify/gen_decor.py --write   # decoration sprites → generated Swift
 ```
 
-모티프와 장식은 **파이썬이 원본**이고 Swift 는 생성물이다. 픽셀아트는 보지 않고 고치면
-반드시 망하는데 이 환경에선 Swift 를 컴파일할 수 없어서, 렌더해 보며 다듬고
-확정된 것만 흘려보낸다. 둘이 어긋나면 `check_data.py` 가 잡는다.
+Motifs and decorations are **authored in Python**; the Swift is generated. Pixel art has to be
+*looked at* to be fixed, and in that environment Swift can't be compiled, so sprites are rendered
+and tweaked as images and only the settled ones are emitted. If the two drift apart,
+`check_data.py` catches it.
 
-아이콘도 손으로 그리지 않는다. `make_icon.py` 가 `PlantSprites.swift` 의 마지막 단계를
-읽어 렌더하므로, 스프라이트를 고치면 아이콘이 따라온다.
+The app icon isn't hand-drawn either. `make_icon.py` renders the final stage out of
+`PlantSprites.swift`, so fixing the sprite fixes the icon.
 
-### 릴리스
+### Releasing
 
 ```bash
 ./build-app.sh --zip                 # dist/TokenPlant-<VERSION>.zip
-shasum -a 256 dist/TokenPlant-*.zip  # cask 에 박을 체크섬
+shasum -a 256 dist/TokenPlant-*.zip  # checksum for the cask
 ```
 
-ad-hoc 서명은 빌드마다 신원이 바뀐다. 그래서 다시 빌드하면 한도 조회용 키체인 접근
-허용을 **다시 물어본다**. 거절해도 성장은 그대로 돌아간다.
+Updates are signed with EdDSA and shipped through Sparkle — no Apple Developer ID required.
+Ad-hoc signing gives the binary a new identity on every build, so a rebuilt copy asks for keychain
+access again. Declining only costs you the rate-limit bonus.
 
-## 문서
+## Docs
 
-- [DESIGN.md](DESIGN.md) — 숫자와 규칙을 왜 그렇게 정했는지
-- [SPEC.md](SPEC.md) — 명세
+- [DESIGN.md](DESIGN.md) — why the numbers and rules are what they are *(Korean)*
+- [SPEC.md](SPEC.md) — the spec *(Korean)*
 
-## 라이선스
+## License
 
-MIT. 자세한 내용은 [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
