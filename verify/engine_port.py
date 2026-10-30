@@ -13,7 +13,7 @@ W_OUT, W_IN, W_CW, W_CR = 500, 100, 125, 10
 TOKENS_PER_ML = 1000
 # 단계 임계값은 **비율**이다. 절대 mL 로 박으면 하루 5M 쓰는 사람은 1년 반 동안
 # 씨앗만 보고, 400M 쓰는 사람은 일주일에 한 그루씩 뽑는다.
-STAGE_FRACTIONS = [0, 0.00375, 0.0125, 0.03, 0.0675, 0.13, 0.235, 0.3925, 0.6175, 0.9375]
+STAGE_FRACTIONS = [0, 0.00375, 0.0125, 0.03, 0.105, 0.234, 0.395, 0.573, 0.755, 0.9375]
 STAGE_COUNT = len(STAGE_FRACTIONS)
 TARGET_CYCLE_DAYS = 28
 MIN_CYCLE_WATER = 7_000

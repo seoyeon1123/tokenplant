@@ -55,9 +55,12 @@ eq(len(STAGE_FRACTIONS), 10, N); eq(STAGE_FRACTIONS[0], 0, N)
 check(STAGE_FRACTIONS[-1] < 1.0, N, "마지막 단계가 목표와 붙어 거목을 볼 틈이 없다")
 check(all(TH_(i) > TH_(i-1) for i in range(1, STAGE_COUNT)), N)
 
-N = "testFinalStepIsAboutOneThirdOfTotal"
-step = STAGE_FRACTIONS[-1] - STAGE_FRACTIONS[-2]
-check(0.30 < step / STAGE_FRACTIONS[-1] < 0.36, N)
+N = "testNoStageGapStallsLongerThanFiveDays"
+# 옛 표는 마지막 칸이 9일이었다. 그 9일 동안 앱에서 아무 일도 안 일어난다.
+for i in range(1, len(STAGE_FRACTIONS)):
+    gap = (STAGE_FRACTIONS[i] - STAGE_FRACTIONS[i - 1]) * TARGET_CYCLE_DAYS
+    check(gap <= 5.2, N, f"Lv.{i} → Lv.{i+1} 가 {gap:.2f}일 걸린다")
+check(STAGE_FRACTIONS[-1] - STAGE_FRACTIONS[-2] > STAGE_FRACTIONS[1] - STAGE_FRACTIONS[0], N)
 
 N = "testCycleIsFourWeeksAtAnyUsageRate"
 # 누가 심어도 한 그루는 4주. 이게 없으면 적게 쓰는 사람은 1년 넘게 씨앗만 본다.
@@ -69,7 +72,7 @@ N = "testEarlyStageThresholdsAreTinyFractionsOfTheCycle"
 # 옛 테스트는 `cap < threshold(5)`(13%)만 봐서 통과했는데, Lv.5 문턱은 6.75% 였다.
 # 검사 대상이 한 칸 위여서 "이틀치 = Lv.5 시작"을 못 잡았다.
 c = 280_000
-for stage, frac in ((1, 0.00375), (2, 0.0125), (3, 0.03), (4, 0.0675), (5, 0.13)):
+for stage, frac in ((1, 0.00375), (2, 0.0125), (3, 0.03), (4, 0.105), (5, 0.234)):
     eq(threshold(stage, c), int(c * frac), N, f"Lv.{stage+1} 문턱이 바뀌었다")
 check(c / 28 > threshold(3, c), N, "하루치가 Lv.4 아래로 내려왔다 — 첫날 정책 재검토")
 

@@ -69,8 +69,8 @@ final class PlantBalanceTests: XCTestCase {
             (1, 0.00375),   // 발아   — 0.1일
             (2, 0.0125),    // 떡잎   — 0.35일
             (3, 0.03),      // 어린잎 — 0.84일
-            (4, 0.0675),    // 자란 줄기 — 1.89일  ← 이틀치가 여길 넘는다
-            (5, 0.13),      // 꽃봉오리 — 3.64일
+            (4, 0.105),     // 자란 줄기 — 2.94일  ← 이틀치가 여기 못 미친다
+            (5, 0.234),     // 꽃봉오리 — 6.55일
         ]
         for (stage, fraction) in expected {
             XCTAssertEqual(PlantBalance.threshold(stage: stage, cycle: cycle),
@@ -91,13 +91,20 @@ final class PlantBalanceTests: XCTestCase {
                        PlantBalance.maxCycleWater)
     }
 
-    /// 뒤로 갈수록 구간이 벌어져야 한다 — 마지막 한 칸이 전체의 1/3.
-    func testFinalStepIsAboutOneThirdOfTotal() {
+    /// 어떤 칸도 5.2일을 넘지 않는다.
+    ///
+    /// 옛 표는 배수로 벌어져서 열매 6.3일, 거목 9.0일이었다. 한 칸이 9일이면
+    /// 그 9일 동안 앱에서 아무 일도 안 일어나고, 새로 깐 사람은 거기서 지운다.
+    /// "한 주에 최소 한 번은 오른다"를 못 박아 둔다.
+    func testNoStageGapStallsLongerThanFiveDays() {
         let f = PlantBalance.stageFractions
-        let lastStep = f[f.count - 1] - f[f.count - 2]
-        let ratio = lastStep / f[f.count - 1]
-        XCTAssertGreaterThan(ratio, 0.30)
-        XCTAssertLessThan(ratio, 0.36)
+        let days = Double(PlantBalance.targetCycleDays)
+        for i in 1..<f.count {
+            let gap = (f[i] - f[i - 1]) * days
+            XCTAssertLessThanOrEqual(gap, 5.2, "Lv.\(i) → Lv.\(i + 1) 가 \(gap)일 걸린다")
+        }
+        // 그래도 뒤가 앞보다 넓긴 해야 한다 — 뒤집히면 곡선이 아니라 역주행이다.
+        XCTAssertGreaterThan(f[f.count - 1] - f[f.count - 2], f[1] - f[0])
     }
 
     /// 만렙(Lv.10)은 이식보다 먼저 와야 한다 — 거목을 며칠 보고 나서 보내는 게 사이클의 끝맛이다.
