@@ -16,6 +16,19 @@ import pathlib
 from tree_sitter import Language, Parser
 import tree_sitter_swift
 
+# 검사 대상에서 빼는 디렉터리. `.build/` 안에는 Sparkle 의 벤더 소스와 SwiftPM 이
+# 생성한 테스트 러너가 있다. 남이 쓴 코드와 기계가 쓴 코드를 우리 규칙으로 재면
+# 거짓 양성만 나온다 — 실제로 `@_silgen_name` 과 Sparkle 의 한 줄이 잡혔다.
+# 클라우드 컨테이너에는 `.build/` 가 없어서 이 구멍이 안 보였고, 맥에서 처음 돌리니 나왔다.
+SKIP_DIRS = {".build", ".swiftpm", "dist", ".git"}
+
+
+def swift_files(root):
+    return sorted(p for p in pathlib.Path(root).rglob("*.swift")
+                  if not any(part in SKIP_DIRS for part in p.parts))
+
+
+
 LANG = Language(tree_sitter_swift.language())
 PARSER = Parser(LANG)
 
@@ -34,7 +47,7 @@ def errors(node, src, out, limit=6):
 
 
 def main(root):
-    files = sorted(pathlib.Path(root).rglob("*.swift"))
+    files = swift_files(root)
     if not files:
         print("swift 파일이 없다", file=sys.stderr)
         return 1

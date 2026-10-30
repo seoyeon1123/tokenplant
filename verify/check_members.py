@@ -17,6 +17,19 @@ from collections import defaultdict
 from tree_sitter import Language, Parser
 import tree_sitter_swift
 
+# 검사 대상에서 빼는 디렉터리. `.build/` 안에는 Sparkle 의 벤더 소스와 SwiftPM 이
+# 생성한 테스트 러너가 있다. 남이 쓴 코드와 기계가 쓴 코드를 우리 규칙으로 재면
+# 거짓 양성만 나온다 — 실제로 `@_silgen_name` 과 Sparkle 의 한 줄이 잡혔다.
+# 클라우드 컨테이너에는 `.build/` 가 없어서 이 구멍이 안 보였고, 맥에서 처음 돌리니 나왔다.
+SKIP_DIRS = {".build", ".swiftpm", "dist", ".git"}
+
+
+def swift_files(root):
+    return sorted(p for p in pathlib.Path(root).rglob("*.swift")
+                  if not any(part in SKIP_DIRS for part in p.parts))
+
+
+
 LANG = Language(tree_sitter_swift.language())
 PARSER = Parser(LANG)
 
@@ -81,7 +94,7 @@ def collect_cases(root):
     계산 프로퍼티가 전부 "빠진 case" 로 잡힌다 — 실제로 그렇게 터졌다.
     """
     cases = defaultdict(set)
-    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+    for f in swift_files(root):
         blocks, lines = type_blocks(str(f))
         for name, lo, hi in blocks:
             if name not in ENUMS:
@@ -103,7 +116,7 @@ def collect_cases(root):
 
 def collect_declared(root):
     declared = defaultdict(set)
-    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+    for f in swift_files(root):
         blocks, lines = type_blocks(str(f))
         # 중첩 타입도 멤버다 — `LimitsReader.ClaudeLimits` 처럼 불린다.
         for name, lo, hi in blocks:
@@ -166,7 +179,7 @@ def func_only_members(root):
     """감시 타입 안에서 **함수로만** 선언된 이름. 같은 이름의 프로퍼티가
     어딘가에 하나라도 있으면 뺀다 — 괄호 없이 써도 되는 자리가 생기니까."""
     funcs, props = set(), set()
-    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+    for f in swift_files(root):
         blocks, lines = type_blocks(str(f))
         for name, lo, hi in blocks:
             for i in range(lo, min(hi + 1, len(lines))):
@@ -197,7 +210,7 @@ FOR_IN = re.compile(r"^\s*for\b.*\bin\b")
 def enum_case_names(root):
     """enum case 이름 — `.streakGift` 같은 자리는 멤버 접근이 아니라 case 다."""
     out = set()
-    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+    for f in swift_files(root):
         for line in f.read_text(encoding="utf8").split("\n"):
             for m in ANY_CASE.finditer(line.split("//")[0]):
                 out.add(m.group(1))
@@ -207,7 +220,7 @@ def enum_case_names(root):
 def paren_less_calls(root, func_only):
     func_only = func_only - STDLIB_PROPS - enum_case_names(root)
     out = []
-    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+    for f in swift_files(root):
         lines = f.read_text(encoding="utf8").split("\n")
         for n, line in enumerate(lines, 1):
             code = line.split("//")[0]
@@ -243,7 +256,7 @@ def switch_case_errors(root, declared, cases):
     나머지 라벨 중 그 enum 에 없는 이름을 잡는다. 하나도 안 맞으면 손대지 않는다.
     """
     out = []
-    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+    for f in swift_files(root):
         lines = f.read_text(encoding="utf8").split("\n")
         block = None           # [(줄번호, 이름)]
         start = 0
@@ -315,7 +328,7 @@ def static_scope_errors(root):
     static 함수의 본문은 들여쓰기로 끝을 잡는다 — 중괄호 세기보다 오탐이 적다.
     """
     bad = []
-    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+    for f in swift_files(root):
         lines = f.read_text(encoding="utf8").split("\n")
         i = 0
         while i < len(lines):
@@ -364,7 +377,7 @@ def optional_on_nonoptional_errors(root):
     이 검사기가 잡지 않으면 Mac 에서 빌드를 돌릴 때까지 모른다.
     """
     bad = []
-    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+    for f in swift_files(root):
         lines = f.read_text(encoding="utf8").split("\n")
         # 파일 전체에서 "값 타입이 옵셔널이 아닌 사전" 이름을 모은다.
         plain_dicts = set()
@@ -451,7 +464,7 @@ def _balanced(text, open_idx):
 def collect_signatures(root):
     """감시 타입의 `func` 시그니처 → {(타입, 함수명): [ [(레이블, 기본값있음)], ... ]}"""
     sigs = defaultdict(list)
-    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+    for f in swift_files(root):
         blocks, lines = type_blocks(str(f))
         code = [_strip_comments(l) for l in lines]
         for name, lo, hi in blocks:
@@ -490,7 +503,7 @@ def argument_label_errors(root, sigs):
     """
     call = re.compile(r"\b(" + "|".join(sorted(WATCHED)) + r")\.([A-Za-z_]\w*)\s*\(")
     bad = []
-    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+    for f in swift_files(root):
         lines = f.read_text(encoding="utf8").split("\n")
         text = "\n".join(_strip_comments(l) for l in lines)
         for m in call.finditer(text):
@@ -548,7 +561,7 @@ def exclusivity_errors(root):
     tree-sitter 는 이 줄을 아무 문제 없이 파싱하므로 여기서 안 잡으면 맥에서만 안다.
     """
     bad = []
-    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+    for f in swift_files(root):
         lines = f.read_text(encoding="utf8").split("\n")
         for n, line in enumerate(lines, 1):
             m = EXCLUSIVITY_LHS.match(_strip_comments(line))
@@ -594,7 +607,7 @@ def slow_typecheck_errors(root):
     나머지는 하나도 안 걸리기 때문이다. 더 느슨하게 잡으면 멀쩡한 체인이 쏟아진다.
     """
     bad = []
-    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+    for f in swift_files(root):
         for n, line in enumerate(f.read_text(encoding="utf8").split("\n"), 1):
             code = _strip_comments(line)
             if len(CHAIN_OPS.findall(code)) >= 3 and len(LITERAL_EQ.findall(code)) >= 2:
@@ -619,7 +632,7 @@ STORED = re.compile(
 
 def decoder_init_errors(root):
     out = []
-    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+    for f in swift_files(root):
         lines = f.read_text(encoding="utf8").split("\n")
         for i, line in enumerate(lines):
             if "init(from decoder" not in line or line.lstrip().startswith("//"):
@@ -673,7 +686,7 @@ def main(root):
     # 감시 타입인데 선언을 하나도 못 읽었다 = 지워졌는데 아직 불리고 있다.
     # 예전에는 이런 타입을 조용히 건너뛰어서, 삭제된 `RepotSoil` 호출이 그대로 살아남았다.
     used_types = set()
-    for f in sorted(pathlib.Path(root).rglob("*.swift")):
+    for f in swift_files(root):
         for n, line in enumerate(f.read_text(encoding="utf8").split("\n"), 1):
             code = line.split("//")[0]
             for typ, member in USE.findall(code):
