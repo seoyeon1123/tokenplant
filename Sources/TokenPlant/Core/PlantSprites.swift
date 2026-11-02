@@ -68,7 +68,7 @@ enum PotSprites {
 
     static let stages: [Stage] = [
 
-        .init(level: 1, name: "씨앗", silhouette: [
+        .init(level: 1, name: L10n.text("씨앗"), silhouette: [
             "........................",
             "........................",
             "........................",
@@ -87,7 +87,7 @@ enum PotSprites {
             "..........OOO...........",
             ".........OOOOO..........",
         ]),
-        .init(level: 2, name: "발아", silhouette: [
+        .init(level: 2, name: L10n.text("발아"), silhouette: [
             "........................",
             "........................",
             "........................",
@@ -106,7 +106,7 @@ enum PotSprites {
             "...........g............",
             "..........OgO...........",
         ]),
-        .init(level: 3, name: "떡잎", silhouette: [
+        .init(level: 3, name: L10n.text("떡잎"), silhouette: [
             "........................",
             "........................",
             "........................",
@@ -125,7 +125,7 @@ enum PotSprites {
             "...........g............",
             "...........g............",
         ]),
-        .init(level: 4, name: "어린잎", silhouette: [
+        .init(level: 4, name: L10n.text("어린잎"), silhouette: [
             "........................",
             "........................",
             "........................",
@@ -144,7 +144,7 @@ enum PotSprites {
             "...........g............",
             "...........g............",
         ]),
-        .init(level: 5, name: "자란 줄기", silhouette: [
+        .init(level: 5, name: L10n.text("자란 줄기"), silhouette: [
             "........................",
             "........................",
             "..........LGG...........",
@@ -163,7 +163,7 @@ enum PotSprites {
             "........GG.g.GG.........",
             "...........g............",
         ]),
-        .init(level: 6, name: "꽃봉오리", silhouette: [
+        .init(level: 6, name: L10n.text("꽃봉오리"), silhouette: [
             "........................",
             "...........F............",
             "..........FFF...........",
@@ -182,7 +182,7 @@ enum PotSprites {
             "........GG.g.GG.........",
             "...........g............",
         ]),
-        .init(level: 7, name: "첫 꽃", silhouette: [
+        .init(level: 7, name: L10n.text("첫 꽃"), silhouette: [
             "........................",
             ".........FFFFF..........",
             "........FFFFFFF.........",
@@ -201,7 +201,7 @@ enum PotSprites {
             ".......GG..g..GG........",
             "...........g............",
         ]),
-        .init(level: 8, name: "만개", silhouette: [
+        .init(level: 8, name: L10n.text("만개"), silhouette: [
             "........................",
             "..FFF....FFFFF....FFF...",
             ".FFYFF..FFFFFFF..FFYFF..",
@@ -220,7 +220,7 @@ enum PotSprites {
             "........GG.g.GG.........",
             "...........g............",
         ]),
-        .init(level: 9, name: "열매", silhouette: [
+        .init(level: 9, name: L10n.text("열매"), silhouette: [
             "........................",
             "..FFF....FFFFF....FFF...",
             ".FFYFF..FFFFFFF..FFYFF..",
@@ -239,7 +239,7 @@ enum PotSprites {
             "........GG.g.GG.........",
             "...........g............",
         ]),
-        .init(level: 10, name: "거목", silhouette: [
+        .init(level: 10, name: L10n.text("거목"), silhouette: [
             "........................",
             ".......GGGGGGGGGG.......",
             ".....GGGLLGGGGGGGGG.....",

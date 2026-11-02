@@ -134,11 +134,11 @@ final class LimitsReaderTests: XCTestCase {
     }
 
     func testWindowLabelIsReadable() {
-        XCTAssertEqual(LimitsReader.windowLabel(300), "5시간")
-        XCTAssertEqual(LimitsReader.windowLabel(10_080), "주간")
-        XCTAssertEqual(LimitsReader.windowLabel(120), "2시간")
-        XCTAssertEqual(LimitsReader.windowLabel(45), "45분")
-        XCTAssertEqual(LimitsReader.windowLabel(nil), "한도")
+        XCTAssertEqual(LimitsReader.windowLabel(300), L10n.text("5시간"))
+        XCTAssertEqual(LimitsReader.windowLabel(10_080), L10n.text("주간"))
+        XCTAssertEqual(LimitsReader.windowLabel(120), L10n.text("\(2)시간"))
+        XCTAssertEqual(LimitsReader.windowLabel(45), L10n.text("\(45)분"))
+        XCTAssertEqual(LimitsReader.windowLabel(nil), L10n.text("한도"))
     }
 
     /// limitName 이 null 이면 limitId 로 떨어지고, 밑줄은 공백으로 풀어 읽히게 한다.

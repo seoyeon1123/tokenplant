@@ -235,7 +235,7 @@ enum DecorIcons {
         "cat": "고양이",
     ]
 
-    static func name(_ key: String) -> String { names[key] ?? key }
+    static func name(_ key: String) -> String { L10n.lookup(names[key] ?? key) }
 
     static let art: [String: [String]] = [
         "bench": [

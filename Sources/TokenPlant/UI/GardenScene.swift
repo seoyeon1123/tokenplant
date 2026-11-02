@@ -23,15 +23,15 @@ struct SeasonPalette: Sendable {
     let extraHaze: Double
 
     static let all: [SeasonPalette] = [
-        .init(key: "spring", name: "봄 · 낮",
+        .init(key: "spring", name: L10n.text("봄 · 낮"),
               sky: "#cfe4ef", grass: "#7fbf6a", grass2: "#6aa858",
               path: "#c2a172", fence: "#a67c52", fence2: "#8a6440",
               water: "#6fb3d9", extraHaze: 0.0),
-        .init(key: "autumn", name: "가을",
+        .init(key: "autumn", name: L10n.text("가을"),
               sky: "#e8dcc0", grass: "#b09a52", grass2: "#98853f",
               path: "#c2a172", fence: "#8a6440", fence2: "#6f4f32",
               water: "#5f9dc0", extraHaze: 0.0),
-        .init(key: "night", name: "밤",
+        .init(key: "night", name: L10n.text("밤"),
               sky: "#2a3350", grass: "#3a5340", grass2: "#2f4535",
               path: "#5c4c3a", fence: "#4a3828", fence2: "#372a1e",
               water: "#2f5a78", extraHaze: 0.3),

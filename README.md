@@ -1,6 +1,6 @@
 # TokenPlant
 
-*[한국어](README.ko.md)*
+*[한국어](README.ko.md) · [简体中文](README.zh-CN.md)*
 
 A macOS menu bar app that grows a pixel-art plant from your AI coding token usage.
 
@@ -18,6 +18,10 @@ a feeder or a birdbath, a bird flies in and perches there.
   <br>
   <img src="Resources/preview-species.png" width="640" alt="Species x growth stage">
 </p>
+
+## Languages
+
+The app follows your macOS language preferences. Korean remains the fallback; Simplified Chinese is supported. Change the app language in System Settings → General → Language & Region → Applications, then relaunch TokenPlant. Language selection does not change save IDs, usage parsing, or automatic updates.
 
 ## Requirements
 

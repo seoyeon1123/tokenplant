@@ -8,6 +8,13 @@
 	<string>TokenPlant</string>
 	<key>CFBundleExecutable</key>
 	<string>TokenPlant</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>ko</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>ko</string>
+		<string>zh-Hans</string>
+	</array>
 	<key>CFBundleIdentifier</key>
 	<string>com.tokenplant.TokenPlant</string>
 	<key>CFBundlePackageType</key>

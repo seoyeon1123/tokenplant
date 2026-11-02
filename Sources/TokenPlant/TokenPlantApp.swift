@@ -43,7 +43,7 @@ struct TokenPlantApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Window("정원", id: AppModel.gardenWindowID) {
+        Window(L10n.text("정원"), id: AppModel.gardenWindowID) {
             GardenView(store: model.store)
         }
         .defaultSize(width: 700, height: 480)
@@ -149,7 +149,7 @@ final class AppModel {
             store.update(todayUsageByProvider: snapshot.byProvider, todayDate: today)
             readError = snapshot.note
                 ?? (snapshot.byProvider.isEmpty && snapshot.skippedFiles > 0
-                    ? "로그 \(snapshot.skippedFiles)개를 읽지 못했어요" : nil)
+                    ? L10n.text("로그 \(snapshot.skippedFiles)개를 읽지 못했어요") : nil)
 
             lastRefresh = Date()
         }
@@ -195,10 +195,10 @@ enum PopoverTab: String, CaseIterable, Identifiable {
         switch self {
         // 이름을 한 세계로 묶는다. 예전엔 홈(웹) · 상점(게임) · 가방(RPG) · 컬렉션(외래어)로
         // 결이 다 달랐다. `case` 이름(bag/collection)은 그대로 둔다 — 화면 글자만 바꾼다.
-        case .home: return "화분"
-        case .shop: return "상점"
-        case .bag: return "창고"
-        case .collection: return "도감"
+        case .home: return L10n.text("화분")
+        case .shop: return L10n.text("상점")
+        case .bag: return L10n.text("창고")
+        case .collection: return L10n.text("도감")
         }
     }
 }
@@ -285,7 +285,7 @@ struct PopoverRoot: View {
             Text(refreshLabel)
                 .font(.system(size: 10, weight: isStale ? .medium : .regular))
                 .foregroundStyle(isStale ? Color.orange : Color.secondary.opacity(0.6))
-                .help(isStale ? "갱신이 멈춰 있어요. 새로고침을 눌러보세요." : "마지막으로 로그를 읽은 시각")
+                .help(isStale ? L10n.text("갱신이 멈춰 있어요. 새로고침을 눌러보세요.") : L10n.text("마지막으로 로그를 읽은 시각"))
 
             Spacer()
 
@@ -305,35 +305,35 @@ struct PopoverRoot: View {
     private var settingsMenu: some View {
         Menu {
             if LoginItem.isAvailable {
-                Toggle("로그인 시 자동 실행", isOn: Binding(
+                Toggle(L10n.text("로그인 시 자동 실행"), isOn: Binding(
                     get: { model.launchAtLogin },
                     set: { model.setLaunchAtLogin($0) }))
                 if LoginItem.needsApproval {
-                    Text("시스템 설정 → 일반 → 로그인 항목에서 허용해 주세요")
+                    Text(L10n.text("시스템 설정 → 일반 → 로그인 항목에서 허용해 주세요"))
                 }
                 if let err = model.loginItemError {
                     Text(err)
                 }
             } else {
-                Text("자동 실행은 앱으로 설치해야 켤 수 있어요")
-                Text("터미널에서 ./build-app.sh --install")
+                Text(L10n.text("자동 실행은 앱으로 설치해야 켤 수 있어요"))
+                Text(L10n.text("터미널에서 ./build-app.sh --install"))
             }
             Divider()
-            Button("업데이트 확인") { model.updater.checkNow() }
-            Toggle("자동으로 업데이트", isOn: Binding(
+            Button(L10n.text("업데이트 확인")) { model.updater.checkNow() }
+            Toggle(L10n.text("자동으로 업데이트"), isOn: Binding(
                 get: { model.updater.automatic },
                 set: { model.updater.automatic = $0 }))
             Divider()
             // 기본은 꺼져 있다. 켜야 키체인을 읽고, 그때 macOS 가 접근 허용을 묻는다.
-            Toggle("한도 창 보너스", isOn: Binding(
+            Toggle(L10n.text("한도 창 보너스"), isOn: Binding(
                 get: { model.store.save.limitBonusEnabled },
                 set: { model.store.setLimitBonus($0); if $0 { model.requestLimitsPermission() } }))
-            Text("5시간·주간 한도를 다 쓰면 물을 더 받아요.\n켤 때 한 번만 맥이 키체인 접근을 묻습니다 — **항상 허용**을 누르면 다시 안 물어요.")
+            Text(L10n.text("5시간·주간 한도를 다 쓰면 물을 더 받아요.\n켤 때 한 번만 맥이 키체인 접근을 묻습니다 — **항상 허용**을 누르면 다시 안 물어요."))
             if model.store.save.limitBonusEnabled, model.store.limits.note != nil {
-                Button("키체인 권한 다시 요청") { model.requestLimitsPermission() }
+                Button(L10n.text("키체인 권한 다시 요청")) { model.requestLimitsPermission() }
             }
             Divider()
-            Button("종료") { NSApplication.shared.terminate(nil) }
+            Button(L10n.text("종료")) { NSApplication.shared.terminate(nil) }
         } label: {
             Image(systemName: "gearshape")
         }
@@ -350,12 +350,12 @@ struct PopoverRoot: View {
 
     /// 분 단위로만 찍으면 "1523분 전" 이 된다. 읽을 수 없는 숫자는 경고가 아니다.
     private var refreshLabel: String {
-        guard let t = model.lastRefresh else { return "읽는 중" }
+        guard let t = model.lastRefresh else { return L10n.text("읽는 중") }
         let secs = Int(Date().timeIntervalSince(t))
-        if secs < 60 { return "\(secs)초 전" }
-        if secs < 3_600 { return "\(secs / 60)분 전" }
-        if secs < 86_400 { return "\(secs / 3_600)시간 전" }
-        return "\(secs / 86_400)일 전"
+        if secs < 60 { return L10n.text("\(secs)초 전") }
+        if secs < 3_600 { return L10n.text("\(secs / 60)분 전") }
+        if secs < 86_400 { return L10n.text("\(secs / 3_600)시간 전") }
+        return L10n.text("\(secs / 86_400)일 전")
     }
 }
 
@@ -397,7 +397,7 @@ struct HomeTab: View {
     ///     메뉴바에 뜨는 숫자가 토큰이라 따로 배울 것도 없다.
     private var todaySection: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("오늘 쓴 토큰")
+            Text(L10n.text("오늘 쓴 토큰"))
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(.tertiary)
 
@@ -406,7 +406,7 @@ struct HomeTab: View {
                     .font(.system(size: 25, weight: .semibold, design: .rounded))
                 Spacer()
                 // mL 은 "내가 쓴 것 → 식물이 받은 것" 다리 역할만 한다. 작게 옆으로.
-                Text("물 +\(store.todayWater.formatted()) mL")
+                Text(L10n.text("물 +\(store.todayWater.formatted()) mL"))
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
@@ -449,11 +449,11 @@ struct HomeTab: View {
     /// 막대는 눈으로 읽히니 남기고, 숫자는 궁금한 사람만 보게 한다.
     private var baselineTip: String {
         guard let ratio = store.todayVsBaseline, let base = store.baselineRate else {
-            return "평소를 재는 중 — \(store.baselineDaysCollected)일째 (\(PlantBalance.dailyRawMinDays)일부터 나와요)"
+            return L10n.text("평소를 재는 중 — \(store.baselineDaysCollected)일째 (\(PlantBalance.dailyRawMinDays)일부터 나와요)")
         }
-        let pct = ratio >= 1 ? String(format: "%.1f배", ratio)
+        let pct = ratio >= 1 ? String(format: L10n.text("%.1f배"), ratio)
                              : String(format: "%.1f%%", ratio * 100)
-        return "평소 \(TokenFormat.short(base)) 대비 오늘 \(pct)"
+        return L10n.text("평소 \(TokenFormat.short(base)) 대비 오늘 \(pct)")
     }
 
     /// 막대 아래 **한 줄뿐.** 지금 제일 할 말 하나만 고른다.
@@ -464,7 +464,7 @@ struct HomeTab: View {
     @ViewBuilder
     private var footnote: some View {
         if store.freeDraws > 0 {
-            Text("선물 도착 · 상점에서 열어보세요")
+            Text(L10n.text("선물 도착 · 상점에서 열어보세요"))
                 .font(.system(size: 10, weight: .medium)).foregroundStyle(Color.orange)
         } else if store.save.streakDays > 0 {
             // 세 가지를 **한 줄에** 넣는다: 며칠째 · 지금 받는 보너스 · 다음 선물까지.
@@ -472,25 +472,25 @@ struct HomeTab: View {
             HStack(spacing: 5) {
                 Image(systemName: "flame.fill")
                     .font(.system(size: 9)).foregroundStyle(Color.orange)
-                Text("\(store.save.streakDays)일째").font(.system(size: 10, weight: .medium))
+                Text(L10n.text("\(store.save.streakDays)일째")).font(.system(size: 10, weight: .medium))
                 let bonus = PlantBalance.streakBonusPercent(days: store.save.streakDays)
                 if bonus > 0 {
-                    Text("물 +\(bonus)%")
+                    Text(L10n.text("물 +\(bonus)%"))
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(Color.green)
                 }
                 Spacer(minLength: 4)
                 if let left = store.daysToNextGift {
-                    Text("다음 선물까지 \(left)일")
+                    Text(L10n.text("다음 선물까지 \(left)일"))
                         .font(.system(size: 10)).foregroundStyle(.tertiary)
                 }
             }
-            .help("토큰을 쓴 날이 이어질수록 성장에 보너스가 붙어요. 하루 빠지면 처음부터 다시 셉니다.")
+            .help(L10n.text("토큰을 쓴 날이 이어질수록 성장에 보너스가 붙어요. 하루 빠지면 처음부터 다시 셉니다."))
         } else if store.todayRaw == 0 {
             // **터미널에서**가 핵심이다. 이 앱은 로컬 CLI 로그만 읽는데, 요즘은 웹이나
             // 데스크톱 앱으로 쓰는 사람이 더 많다. 그 사람들은 하루 종일 Claude 를 쓰고도
             // 화분이 그대로인 걸 보고 "고장났다"고 결론 내린다 — 만든 사람도 그랬다.
-            Text("터미널에서 Claude Code · Codex 를 쓰면 저절로 자라요.\n웹·데스크톱 앱 사용량은 맥에 기록이 안 남아서 셀 수 없어요.")
+            Text(L10n.text("터미널에서 Claude Code · Codex 를 쓰면 저절로 자라요.\n웹·데스크톱 앱 사용량은 맥에 기록이 안 남아서 셀 수 없어요."))
                 .font(.system(size: 10)).foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }

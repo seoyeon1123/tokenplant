@@ -571,7 +571,7 @@ enum DecorIcons {
         lines.append(f'        "{k}": "{NAMES[k]}",')
     lines.append("    ]")
     lines.append("")
-    lines.append("    static func name(_ key: String) -> String { names[key] ?? key }")
+    lines.append("    static func name(_ key: String) -> String { L10n.lookup(names[key] ?? key) }")
     lines.append("")
     lines.append("    static let art: [String: [String]] = [")
     for k in SHOP_DECOR + GACHA_DECOR:

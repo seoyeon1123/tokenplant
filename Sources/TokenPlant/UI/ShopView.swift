@@ -31,7 +31,7 @@ struct ShopView: View {
                         let items = ShopItem.sortedByPrice.filter { $0.category == cat }
                         if !items.isEmpty {
                             VStack(alignment: .leading, spacing: 0) {
-                                Text(cat)
+                                Text(L10n.lookup(cat))
                                     .font(.system(size: 9, weight: .medium, design: .monospaced))
                                     .foregroundStyle(.tertiary)
                                     .padding(.bottom, 3)
@@ -57,20 +57,20 @@ struct ShopView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(TokenFormat.short(store.wallet))
                         .font(.system(size: 17, weight: .semibold, design: .monospaced))
-                    Text("토큰").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text(L10n.text("토큰")).font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 .foregroundStyle(Color.blue)
                 Spacer()
                 // 사도 성장은 안 줄어든다는 걸 여기서 못 박아둔다 — 이게 이 상점의 성격이다.
-                Text("사도 자란 건 안 줄어요")
+                Text(L10n.text("사도 자란 건 안 줄어요"))
                     .font(.system(size: 10)).foregroundStyle(.tertiary)
             }
             HStack(spacing: 4) {
                 Image(systemName: "chart.line.uptrend.xyaxis").font(.system(size: 8))
                 // 측정값인지 기본값인지 구분해 쓴다 — 남의 평균을 자기 값인 척 보여주면 안 된다.
                 Text(store.dailyRateIsMeasured
-                     ? "하루 평균 \(TokenFormat.short(store.dailyRate)) 씁니다 (최근 14일)"
-                     : "하루 \(TokenFormat.short(store.dailyRate)) 기준 (측정 중 — 3일 지나면 내 값으로)")
+                     ? L10n.text("하루 평균 \(TokenFormat.short(store.dailyRate)) 씁니다 (최근 14일)")
+                     : L10n.text("하루 \(TokenFormat.short(store.dailyRate)) 기준 (측정 중 — 3일 지나면 내 값으로)"))
                     .font(.system(size: 9))
             }
             .foregroundStyle(.tertiary)
@@ -83,14 +83,14 @@ struct ShopView: View {
             if store.earnedTotal > 0 {
                 HStack(spacing: 4) {
                     Image(systemName: "equal.circle").font(.system(size: 8))
-                    Text("번 것 \(TokenFormat.short(store.earnedTotal))")
+                    Text(L10n.text("번 것 \(TokenFormat.short(store.earnedTotal))"))
                     Text("−").foregroundStyle(.tertiary)
-                    Text("쓴 것 \(TokenFormat.short(store.spentTotal))")
+                    Text(L10n.text("쓴 것 \(TokenFormat.short(store.spentTotal))"))
                     Text("=").foregroundStyle(.tertiary)
                     Text(TokenFormat.short(store.wallet)).foregroundStyle(Color.blue)
                 }
                 .font(.system(size: 9, design: .monospaced))
-                .help("지갑은 오늘치가 아니라 설치 후 쌓인 잔액이에요. 자정에 초기화되지 않습니다.")
+                .help(L10n.text("지갑은 오늘치가 아니라 설치 후 쌓인 잔액이에요. 자정에 초기화되지 않습니다."))
                 .foregroundStyle(.tertiary)
             }
         }
@@ -157,7 +157,7 @@ struct ShopView: View {
                         Text(DecorIcons.name(key))
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Color.orange)
-                        Text("정원에 놓았어요")
+                        Text(L10n.text("정원에 놓았어요"))
                             .font(.system(size: 10)).foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -173,7 +173,7 @@ struct ShopView: View {
                 ForEach(DecorIcons.gachaKeys, id: \.self) { key in
                     let mine = store.save.decorations.contains(key)
                     DecorIcon(key: key, pixelSize: 1, silhouette: !mine)
-                        .help(mine ? DecorIcons.name(key) : "아직 안 나온 장식")
+                        .help(mine ? DecorIcons.name(key) : L10n.text("아직 안 나온 장식"))
                 }
                 Spacer(minLength: 4)
                 Text("\(DecorIcons.gachaKeys.count - gachaLeft.count) / \(DecorIcons.gachaKeys.count)")
@@ -222,42 +222,42 @@ struct ShopView: View {
             // 무료 뽑기권은 값표 자체를 대신한다. 값을 회색으로 띄워두면
             // 지갑이 모자라 보여서, 이미 받은 선물을 못 여는 줄 안다.
             if item == .decorBox && store.freeDraws > 0 && !gachaLeft.isEmpty {
-                Text("선물 \(store.freeDraws)회")
+                Text(L10n.text("선물 \(store.freeDraws)회"))
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(Color.orange)
-                Button("무료 뽑기") { drawDecor() }
+                Button(L10n.text("무료 뽑기")) { drawDecor() }
                     .controlSize(.small)
                     .buttonStyle(.borderedProminent)
             } else {
             switch state {
             case .alreadyOwned:
-                Text("보유 중").font(.system(size: 10, weight: .medium)).foregroundStyle(.green)
+                Text(L10n.text("보유 중")).font(.system(size: 10, weight: .medium)).foregroundStyle(.green)
 
             case .ok where item == .decorBox && gachaLeft.isEmpty:
                 priceLines(item, affordable: true)
                 // 다 모았는데 버튼이 살아 있으면 지갑만 나간다.
-                Text("다 모았어요").font(.system(size: 10, weight: .medium)).foregroundStyle(.green)
+                Text(L10n.text("다 모았어요")).font(.system(size: 10, weight: .medium)).foregroundStyle(.green)
 
             case .insufficientBalance(let short):
                 // 값은 같은 자리에 그대로, 색만 회색으로 내린다. 버튼이 없는 것 자체가
                 // "아직 못 산다"는 신호다 — 거기에 "N 부족"까지 쓰면 그 숫자가 커 보여서
                 // 오히려 "영영 못 산다"로 읽혔다. 언제 살 수 있는지는 툴팁에 있다.
                 priceLines(item, affordable: false)
-                    .help("\(waitText(short)) 살 수 있어요 (하루 평균 \(TokenFormat.short(store.dailyRate)) 기준)")
+                    .help(L10n.text("\(waitText(short)) 살 수 있어요 (하루 평균 \(TokenFormat.short(store.dailyRate)) 기준)"))
 
             case .ok:
                 priceLines(item, affordable: true)
-                Button(item == .decorBox ? "뽑기" : "구매") {
+                Button(item == .decorBox ? L10n.text("뽑기") : L10n.text("구매")) {
                     if item == .decorBox {
                         drawDecor()
                     } else {
                         _ = store.buy(item)
                         if item.isDecoration {
-                            flash = "\(item.name) — 정원에 놓았어요"
+                            flash = L10n.text("\(item.name) — 정원에 놓았어요")
                         } else if item.isPassive {
-                            flash = "\(item.name) — 바로 적용됐어요"
+                            flash = L10n.text("\(item.name) — 바로 적용됐어요")
                         } else {
-                            flash = "\(item.name) — 창고에 담았어요"
+                            flash = L10n.text("\(item.name) — 창고에 담았어요")
                         }
                     }
                 }
@@ -293,10 +293,10 @@ struct ShopView: View {
         let d = store.days(forRaw: short)
         if d < 0.5 {
             let hours = Int((d * 24).rounded())
-            return hours <= 1 ? "조금만 더 쓰면" : "\(hours)시간 더 쓰면"
+            return hours <= 1 ? L10n.text("조금만 더 쓰면") : L10n.text("\(hours)시간 더 쓰면")
         }
-        if d < 1.5 { return "하루 더 쓰면" }
-        return "\(Int(d.rounded()))일 더 쓰면"
+        if d < 1.5 { return L10n.text("하루 더 쓰면") }
+        return L10n.text("\(Int(d.rounded()))일 더 쓰면")
     }
 
     /// 성장 셋은 **같은 값을 물로 샀을 때와 비교**해서 보여준다.
@@ -311,20 +311,20 @@ struct ShopView: View {
             // 스트릭·거름 보너스를 곱해서, 같은 물 한 개가 날마다 다른 양으로 들어간다.
             // (창고 문구는 보너스를 먹인 뒤 값을 찍어서 둘이 서로 달랐다.)
             // 여기 적는 건 보너스 전 기본량이고, 하루 상한도 같이 알려준다.
-            return "기본 +\(store.waterML.formatted()) mL"
-                 + " · 하루 \(PlantBalance.dailyWaterUses)번까지 (보너스만큼 더 들어가요)"
+            return L10n.text("기본 +\(store.waterML.formatted()) mL")
+                 + L10n.text(" · 하루 \(PlantBalance.dailyWaterUses)번까지 (보너스만큼 더 들어가요)")
 
         case .fertilizer:
             let left = store.save.fertilizerDaysLeft(now: Date())
             if left > 0 {
-                return "\(PlantBalance.fertilizerDays)일간 +\(PlantBalance.fertilizerBonusPercent)% · 사용 중 \(left)일"
+                return L10n.text("\(PlantBalance.fertilizerDays)일간 +\(PlantBalance.fertilizerBonusPercent)% · 사용 중 \(left)일")
             }
             // 7일간 들어올 물의 25% 가 회수량. 토큰을 계속 써야 성립한다.
             // 상수 환산이 아니라 기록에서 읽는다 — 안 그러면 회수량이 절반으로 보인다.
             let dailyML = store.measuredDailyWater ?? (store.dailyRate / PlantBalance.rawPerML)
             let back = dailyML * PlantBalance.fertilizerDays * PlantBalance.fertilizerBonusPercent / 100
-            return "\(PlantBalance.fertilizerDays)일간 들어오는 물 +\(PlantBalance.fertilizerBonusPercent)%"
-                 + " · 약 +\(back.formatted()) mL \(vsWater(item, back))"
+            return L10n.text("\(PlantBalance.fertilizerDays)일간 들어오는 물 +\(PlantBalance.fertilizerBonusPercent)%")
+                 + L10n.text(" · 약 +\(back.formatted()) mL \(vsWater(item, back))")
 
         // 한 그루에 한 번이라는 걸 **살 때** 알려야 한다. 두 개를 사도 이번 사이클엔 못 쓴다.
         case .nutrient:
@@ -332,19 +332,19 @@ struct ShopView: View {
             // 실제로 20% → 10% 로 내린 뒤 화면은 −20% 라고 계속 말하고 있었고,
             // 같은 문장 안의 mL 값은 10% 로 계산돼서 스스로 모순이었다.
             let pct = Nutrient.reducePercent
-            guard store.pot != nil else { return "남은 거리 −\(pct)%" }
+            guard store.pot != nil else { return L10n.text("남은 거리 −\(pct)%") }
             // 줄 수 있는 그루 중 가장 많이 들어가는 쪽으로 견준다.
             let back = store.nutrientSlots.compactMap { store.nutrientGain($0) }.max() ?? 0
-            return "남은 거리 −\(pct)% · 한 그루에 한 번"
-                 + " · 지금 +\(back.formatted()) mL \(vsWater(item, back))"
+            return L10n.text("남은 거리 −\(pct)% · 한 그루에 한 번")
+                 + L10n.text(" · 지금 +\(back.formatted()) mL \(vsWater(item, back))")
 
         // **뭘 받는지**를 적는다. 예전엔 "다음 씨앗 전설 확정" 뿐이라,
         // 7일치를 내고 뭐가 오는지 모른 채 사야 했다. 확률만 적어도 마찬가지다 —
         // "3%" 는 희소성이지 받는 물건이 아니다.
-        case .premiumSeed: return "대나무·단풍·벚나무·꽃선인장 중 하나 (전설이 나올 수도)"
-        case .legendarySeed: return "세계수 또는 무지개꽃"
-        case .shinyCharm: return "잎이 금색으로 물든 그루 (영구)"
-        case .potSlot: return "동시에 두 그루 (영구)"
+        case .premiumSeed: return L10n.text("대나무·단풍·벚나무·꽃선인장 중 하나 (전설이 나올 수도)")
+        case .legendarySeed: return L10n.text("세계수 또는 무지개꽃")
+        case .shinyCharm: return L10n.text("잎이 금색으로 물든 그루 (영구)")
+        case .potSlot: return L10n.text("동시에 두 그루 (영구)")
         // **없는 걸 말하지 않는다.** 예전엔 `(효과 없음)` 이라고 적었는데,
         // 벤치는 실제로 정원에 놓이고 자리도 옮길 수 있다 — "사봐야 소용없음" 으로 읽혔다.
         // "성장에 도움이 안 된다"는 경고는 카테고리(`장식`)가 이미 하고 있다.
@@ -355,14 +355,14 @@ struct ShopView: View {
         // 모이통만 따로 말한다 — 유일하게 **뭔가를 불러오는** 장식이다.
         // 이걸 안 적으면 새는 아무도 못 본다. 놓고 나서 우연히 발견하길 기대할 수는 없다.
         case .feeder:
-            return "정원에 놓여요 · 새가 찾아와요"
+            return L10n.text("정원에 놓여요 · 새가 찾아와요")
         case .bench, .lantern:
-            return "정원에 놓여요 · 자리는 끌어서 옮겨요"
+            return L10n.text("정원에 놓여요 · 자리는 끌어서 옮겨요")
         // 몇 개가 남았는지를 적는다. "랜덤"만 쓰면 이미 다 모은 사람이 또 산다.
         case .decorBox:
             let left = gachaLeft.count
-            return left > 0 ? "누르면 아직 없는 장식 하나가 바로 나와요 (중복 없음)"
-                            : "장식을 다 모았어요"
+            return left > 0 ? L10n.text("누르면 아직 없는 장식 하나가 바로 나와요 (중복 없음)")
+                            : L10n.text("장식을 다 모았어요")
         }
     }
 
@@ -372,8 +372,8 @@ struct ShopView: View {
         let waterCount = item.priceDays / ShopItem.water.priceDays
         let alt = Int(waterCount * Double(store.waterML))
         let margin = back - alt
-        return margin >= 0 ? "(물보다 +\(margin.formatted()))"
-                           : "(물보다 −\(abs(margin).formatted()) 손해)"
+        return margin >= 0 ? L10n.text("(물보다 +\(margin.formatted()))")
+                           : L10n.text("(물보다 −\(abs(margin).formatted()) 손해)")
     }
 }
 
@@ -390,7 +390,7 @@ struct BagView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            section("소모품") {
+            section(L10n.text("소모품")) {
                 // 장식 뽑기는 상점에서 사는 즉시 열린다(`drawDecor`) — 창고를 거치지 않는다.
                 // 걸러내지 않으면 영원히 `×0` 인 줄과 영원히 눌리지 않는 「사용」 버튼이 남는다.
                 let items = ShopItem.allCases.filter {
@@ -400,26 +400,26 @@ struct BagView: View {
             }
 
             if store.save.fertilizerActive(now: Date()) {
-                section("지속 중") { fertilizerRow }
+                section(L10n.text("지속 중")) { fertilizerRow }
             }
 
-            section("씨앗") {
+            section(L10n.text("씨앗")) {
                 ForEach([ShopItem.premiumSeed, .legendarySeed], id: \.self) { seedRow($0) }
                 if let g = store.save.pendingSeedGuarantee {
-                    Text("다음 씨앗 \(g.label) 확정 예약됨")
+                    Text(L10n.text("다음 씨앗 \(g.label) 확정 예약됨"))
                         .font(.system(size: 10)).foregroundStyle(.green)
                 }
             }
 
             if !store.save.passives.isEmpty {
-                section("보유형") {
+                section(L10n.text("보유형")) {
                     ForEach(store.save.passives, id: \.self) { raw in
                         if let item = ShopItem(rawValue: raw) {
                             HStack {
                                 ShopItemIcon(item: item, pixelSize: 1)
                                 Text(item.name).font(.system(size: 11))
                                 Spacer()
-                                Text(item.isDecoration ? "정원에 놓임" : "적용 중")
+                                Text(item.isDecoration ? L10n.text("정원에 놓임") : L10n.text("적용 중"))
                                     .font(.system(size: 9)).foregroundStyle(.green)
                             }
                         }
@@ -455,16 +455,16 @@ struct BagView: View {
             Spacer()
             // 영양제는 그루에 기록된다 — 화분이 둘이면 어느 그루에 줄지 고른다.
             if item == .nutrient, store.slotCount == 2 {
-                Menu("사용") {
+                Menu(L10n.text("사용")) {
                     ForEach(store.nutrientSlots, id: \.self) { slot in
-                        Button("\(slot + 1)번 · \(store.species(slot).name)") { apply(item, slot: slot) }
+                        Button(L10n.text("\(slot + 1)번 · \(store.species(slot).name)")) { apply(item, slot: slot) }
                     }
                 }
                 .controlSize(.small)
                 .fixedSize()
                 .disabled(n == 0 || blocked != nil)
             } else {
-                Button("사용") { apply(item, slot: 0) }
+                Button(L10n.text("사용")) { apply(item, slot: 0) }
                     .controlSize(.small)
                     .disabled(n == 0 || blocked != nil)
             }
@@ -476,12 +476,12 @@ struct BagView: View {
         switch store.use(item, slot: slot) {
         case .ok(let w):
             if let key = store.lastDecorFound {
-                flash = "\(DecorIcons.name(key)) 이(가) 나왔어요 — 도감 탭의 정원에 놓였어요"
+                flash = L10n.text("\(DecorIcons.name(key)) 이(가) 나왔어요 — 도감 탭의 정원에 놓였어요")
             } else {
-                flash = w > 0 ? "\(item.name) — 물 +\(w.formatted()) mL" : "\(item.name) 사용"
+                flash = w > 0 ? L10n.text("\(item.name) — 물 +\(w.formatted()) mL") : L10n.text("\(item.name) 사용")
             }
         case .noEffect(let why): flash = why
-        case .notOwned: flash = "가진 게 없어요"
+        case .notOwned: flash = L10n.text("가진 게 없어요")
         }
     }
 
@@ -492,9 +492,9 @@ struct BagView: View {
     private var fertilizerRow: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack {
-                Text("거름 +\(PlantBalance.fertilizerBonusPercent)%").font(.system(size: 11, weight: .medium))
+                Text(L10n.text("거름 +\(PlantBalance.fertilizerBonusPercent)%")).font(.system(size: 11, weight: .medium))
                 Spacer()
-                Text("\(store.save.fertilizerDaysLeft(now: Date()))일 남음 · 최대 \(PlantBalance.fertilizerMaxDays)일")
+                Text(L10n.text("\(store.save.fertilizerDaysLeft(now: Date()))일 남음 · 최대 \(PlantBalance.fertilizerMaxDays)일"))
                     .font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
             }
             GeometryReader { geo in
@@ -521,11 +521,11 @@ struct BagView: View {
             // 결과를 버리고 성공 문구를 덮어쓰고 있었다. 엔진이 거절해도(이미 같거나 높은
             // 등급이 예약돼 있을 때) 화면은 "예약됐어요" 라고 말해서, 아래 줄의
             // "전설 확정 예약됨" 과 정면으로 어긋났다.
-            Button("예약") {
+            Button(L10n.text("예약")) {
                 switch store.use(item) {
-                case .ok: flash = "\(item.name) 예약 — 다음 씨앗에 적용돼요"
+                case .ok: flash = L10n.text("\(item.name) 예약 — 다음 씨앗에 적용돼요")
                 case .noEffect(let why): flash = why
-                case .notOwned: flash = "가진 게 없어요"
+                case .notOwned: flash = L10n.text("가진 게 없어요")
                 }
             }
                 .controlSize(.small)

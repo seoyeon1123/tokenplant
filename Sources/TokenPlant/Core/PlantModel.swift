@@ -25,10 +25,10 @@ enum PlantRarity: String, Codable, Sendable, CaseIterable {
     /// 엔진이 등급을 문구에 쓰려면 같은 표를 또 만들어야 했다.
     var label: String {
         switch self {
-        case .common: return "흔함"
-        case .uncommon: return "보통"
-        case .rare: return "희귀"
-        case .legendary: return "전설"
+        case .common: return L10n.text("흔함")
+        case .uncommon: return L10n.text("보통")
+        case .rare: return L10n.text("희귀")
+        case .legendary: return L10n.text("전설")
         }
     }
 
@@ -70,38 +70,38 @@ struct PlantSpecies: Codable, Sendable, Identifiable, Equatable {
 
     static let catalog: [PlantSpecies] = [
         // 흔함
-        .init(id: "dandelion", name: "민들레", rarity: .common, shape: .low,
+        .init(id: "dandelion", name: L10n.text("민들레"), rarity: .common, shape: .low,
               leaf: "#7fc46b", leafLight: "#a9dd93", leafShade: "#54924a", petal: "#f5c542", motif: .daisy),
-        .init(id: "tomato", name: "방울토마토", rarity: .common, shape: .round,
+        .init(id: "tomato", name: L10n.text("방울토마토"), rarity: .common, shape: .round,
               leaf: "#5ec489", leafLight: "#93e0ac", leafShade: "#399263", petal: "#f2e8a0", motif: .berry),
-        .init(id: "lettuce", name: "상추", rarity: .common, shape: .low,
+        .init(id: "lettuce", name: L10n.text("상추"), rarity: .common, shape: .low,
               leaf: "#8fd06a", leafLight: "#b8e598", leafShade: "#5f9c46", petal: nil, motif: .ruffle),
-        .init(id: "sunflower", name: "해바라기", rarity: .common, shape: .tall,
+        .init(id: "sunflower", name: L10n.text("해바라기"), rarity: .common, shape: .tall,
               leaf: "#5ab377", leafLight: "#8ad39c", leafShade: "#357f52", petal: "#f5c542", motif: .sun),
-        .init(id: "morningglory", name: "나팔꽃", rarity: .common, shape: .round,
+        .init(id: "morningglory", name: L10n.text("나팔꽃"), rarity: .common, shape: .round,
               leaf: "#6cbf95", leafLight: "#9bdcb6", leafShade: "#428b68", petal: "#8f7fd6", motif: .trumpet),
         // 보통
-        .init(id: "rose", name: "장미", rarity: .uncommon, shape: .round,
+        .init(id: "rose", name: L10n.text("장미"), rarity: .uncommon, shape: .round,
               leaf: "#3f9c6d", leafLight: "#72c496", leafShade: "#2a6f4c", petal: "#d8546d", motif: .rosette),
-        .init(id: "tulip", name: "튤립", rarity: .uncommon, shape: .tall,
+        .init(id: "tulip", name: L10n.text("튤립"), rarity: .uncommon, shape: .tall,
               leaf: "#63bd85", leafLight: "#95d8ab", leafShade: "#3f8a5e", petal: "#e5674f", motif: .cup),
-        .init(id: "lavender", name: "라벤더", rarity: .uncommon, shape: .tall,
+        .init(id: "lavender", name: L10n.text("라벤더"), rarity: .uncommon, shape: .tall,
               leaf: "#7fb894", leafLight: "#a9d4b8", leafShade: "#578870", petal: "#9b7fd4", motif: .spike),
-        .init(id: "monstera", name: "몬스테라", rarity: .uncommon, shape: .low,
+        .init(id: "monstera", name: L10n.text("몬스테라"), rarity: .uncommon, shape: .low,
               leaf: "#358f5f", leafLight: "#68b98a", leafShade: "#226642", petal: nil, motif: .split),
         // 희귀
-        .init(id: "bamboo", name: "대나무", rarity: .rare, shape: .tall,
+        .init(id: "bamboo", name: L10n.text("대나무"), rarity: .rare, shape: .tall,
               leaf: "#8fc46b", leafLight: "#b8dd96", leafShade: "#62924a", petal: nil, motif: .node),
-        .init(id: "maple", name: "단풍", rarity: .rare, shape: .round,
+        .init(id: "maple", name: L10n.text("단풍"), rarity: .rare, shape: .round,
               leaf: "#e0783f", leafLight: "#f0a565", leafShade: "#b0522a", petal: "#e0503f", motif: .star),
-        .init(id: "cherry", name: "벚나무", rarity: .rare, shape: .round,
+        .init(id: "cherry", name: L10n.text("벚나무"), rarity: .rare, shape: .round,
               leaf: "#f2a8c0", leafLight: "#ffd0de", leafShade: "#d47f9c", petal: "#f7c3d5", motif: .cluster),
-        .init(id: "cactus", name: "꽃선인장", rarity: .rare, shape: .low,
+        .init(id: "cactus", name: L10n.text("꽃선인장"), rarity: .rare, shape: .low,
               leaf: "#6fae72", leafLight: "#9ccb9e", leafShade: "#4a7f4d", petal: "#f2748c", motif: .needle),
         // 전설
-        .init(id: "worldtree", name: "세계수", rarity: .legendary, shape: .tall,
+        .init(id: "worldtree", name: L10n.text("세계수"), rarity: .legendary, shape: .tall,
               leaf: "#4fbfa0", leafLight: "#8fe0c9", leafShade: "#2d8570", petal: "#bfe8ff", motif: .bell),
-        .init(id: "rainbow", name: "무지개꽃", rarity: .legendary, shape: .round,
+        .init(id: "rainbow", name: L10n.text("무지개꽃"), rarity: .legendary, shape: .round,
               leaf: "#7fd0b0", leafLight: "#b5ecd6", leafShade: "#4f9c82", petal: "#ff8fb8", motif: .aurora),
     ]
 
@@ -290,15 +290,15 @@ struct GardenTier: Sendable, Equatable {
     var unlock: String
 
     static let all: [GardenTier] = [
-        .init(key: "sill",   name: "창가",      need: 0,  canvas: (72, 40),   unlock: "화분만"),
-        .init(key: "balc",   name: "베란다",    need: 1,  canvas: (88, 44),   unlock: "첫 이식"),
-        .init(key: "bed",    name: "작은 화단", need: 3,  canvas: (104, 48),  unlock: "정원 창"),
+        .init(key: "sill",   name: L10n.text("창가"),      need: 0,  canvas: (72, 40),   unlock: L10n.text("화분만")),
+        .init(key: "balc",   name: L10n.text("베란다"),    need: 1,  canvas: (88, 44),   unlock: L10n.text("첫 이식")),
+        .init(key: "bed",    name: L10n.text("작은 화단"), need: 3,  canvas: (104, 48),  unlock: L10n.text("정원 창")),
         // "명패" 라고 적어뒀는데 명패는 잠겨 있지 않다 — 정원 창이 열리는 3그루부터 바로 눌린다.
         // 뒷마당에서 실제로 새로 생기는 건 울타리와 길이다.
-        .init(key: "yard",   name: "뒷마당",    need: 6,  canvas: (136, 56),  unlock: "울타리·길"),
-        .init(key: "green",  name: "온실",      need: 10, canvas: (168, 64),  unlock: "계절·밤낮"),
-        .init(key: "arbor",  name: "수목원",    need: 18, canvas: (224, 88),  unlock: "연못·PNG 내보내기"),
-        .init(key: "forest", name: "비밀의 숲", need: 30, canvas: (272, 104), unlock: "정원 만렙"),
+        .init(key: "yard",   name: L10n.text("뒷마당"),    need: 6,  canvas: (136, 56),  unlock: L10n.text("울타리·길")),
+        .init(key: "green",  name: L10n.text("온실"),      need: 10, canvas: (168, 64),  unlock: L10n.text("계절·밤낮")),
+        .init(key: "arbor",  name: L10n.text("수목원"),    need: 18, canvas: (224, 88),  unlock: L10n.text("연못·PNG 내보내기")),
+        .init(key: "forest", name: L10n.text("비밀의 숲"), need: 30, canvas: (272, 104), unlock: L10n.text("정원 만렙")),
     ]
 
     static func tier(forCount n: Int) -> GardenTier {

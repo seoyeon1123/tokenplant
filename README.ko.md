@@ -1,6 +1,6 @@
 # TokenPlant
 
-*[English](README.md)*
+*[English](README.md) · [简体中文](README.zh-CN.md)*
 
 AI 코딩 토큰 사용량으로 식물을 키우는 macOS 메뉴바 앱.
 

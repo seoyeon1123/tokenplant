@@ -80,7 +80,7 @@ enum UsageReader {
         let cExists = fm.fileExists(atPath: (claudeRoot ?? defaultClaudeRoot).path)
         let xExists = fm.fileExists(atPath: (codexRoot ?? defaultCodexRoot).path)
         if !cExists && !xExists {
-            snap.note = "로그 폴더를 못 찾았어요 (~/.claude/projects · ~/.codex/sessions)"
+            snap.note = L10n.text("로그 폴더를 못 찾았어요 (~/.claude/projects · ~/.codex/sessions)")
             return snap
         }
         // 30초마다 부르는 경로라 **이어 읽는다.** 실측 하루 74MB 를 매번 처음부터 파싱하면
