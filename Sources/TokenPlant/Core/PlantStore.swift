@@ -276,7 +276,14 @@ final class PlantStore {
             // 단계 임계값이 목표의 **비율**이라 목표가 줄면 단계가 올라간다.
             // `grow` 는 물이 들어올 때만 도니까 여기서 직접 맞춘다 —
             // 안 하면 게이지는 꽉 찼는데 스프라이트만 씨앗인 상태가 남는다.
-            p.stageIndex = PlantBalance.stageIndex(forWater: p.water, cycle: fitted)
+            //
+            // **절대 내리지 않는다.** 여기만 대입이고 `grow` 는 `+= 1` 뿐이라,
+            // 역행이 새어 나올 수 있는 구멍은 이 줄 하나다. 0.2.7 에서 뒤쪽
+            // stageFractions 를 재분배하면서 모든 문턱이 뒤로 갔는데,
+            // 그때 이 줄이 기존 그루를 한 칸 깎아 내릴 수 있었다.
+            // 자란 게 줄어드는 건 사용자가 가장 못 참는 종류의 버그다.
+            p.stageIndex = max(p.stageIndex,
+                               PlantBalance.stageIndex(forWater: p.water, cycle: fitted))
             save[keyPath: key] = p
         }
     }

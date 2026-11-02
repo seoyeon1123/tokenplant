@@ -187,6 +187,39 @@ final class ReviewRegressionTests: XCTestCase {
         XCTAssertEqual(store.save.pot?.cycleWater, before, "목표가 커졌다 — 게이지가 뒤로 간다")
     }
 
+    /// **단계는 절대 안 내려간다.**
+    ///
+    /// `grow` 는 `stageIndex += 1` 뿐이라 역행이 불가능한데, 재조정만 대입이었다.
+    /// 0.2.7 에서 뒤쪽 stageFractions 를 재분배하면서 문턱이 전부 뒤로 갔고,
+    /// 그 순간 이 대입이 기존 그루를 한 칸 깎을 수 있게 됐다.
+    /// 저장된 단계가 지금 표의 계산값보다 높은 상태를 그대로 재현한다.
+    func testRefitNeverLowersTheStage() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("tokenplant-stage-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("state.json")
+        let d = ISO8601DateFormatter().date(from: "2026-09-20T04:00:00Z")!
+
+        // 가볍게 쓰는 사람 + 남의 기본값 목표 → 재조정이 분명히 돈다(줄이는 방향).
+        // 물은 0 인데 단계는 저장돼 있다. 계산값은 무조건 0 이므로 대입이면 깎인다.
+        try """
+        {"pot":{"speciesID":"tomato","water":0,"stageIndex":4,"isShiny":false,
+         "plantedAt":800000000,"fruitHarvested":false,
+         "cycleWater":\(PlantBalance.legacyCycleWater)},
+         "dailyRaw":{"\(day(10))":1000000,"\(day(12))":1000000,"\(day(14))":1000000},
+         "dailyWater":{"\(day(10))":120,"\(day(12))":120,"\(day(14))":120},
+         "historyBackfilled":true}
+        """.write(to: url, atomically: true, encoding: .utf8)
+        let store = PlantStore(url: url, clock: { d })
+        let before = store.save.pot!.stageIndex
+        store.refitUntouchedCycles()
+        XCTAssertLessThan(store.save.pot!.cycleWater, PlantBalance.legacyCycleWater,
+                          "재조정이 아예 안 돌았다 — 이 테스트가 아무것도 안 지키고 있다")
+        XCTAssertGreaterThanOrEqual(store.save.pot!.stageIndex, before,
+                                    "재조정이 단계를 깎았다 — 자란 게 줄어든다")
+    }
+
     /// 사이클 1/3 을 넘긴 그루는 그냥 둔다 — 그쯤이면 사용자가 그 목표로 계획을 세웠다.
     func testRefitLeavesAPlantPastAThirdAlone() throws {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
