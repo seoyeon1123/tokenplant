@@ -30,7 +30,7 @@ struct CollectionView: View {
     private var gardenSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
-                Text("정원 · \(store.save.gardenTier.name)")
+                Text(L10n.text("정원 · \(store.save.gardenTier.name)"))
                     .font(.system(size: 12, weight: .semibold))
                 Spacer()
                 Text(store.gardenCountText)
@@ -55,10 +55,10 @@ struct CollectionView: View {
 
             HStack {
                 if let next = GardenTier.next(afterCount: store.save.gardenCount) {
-                    Text("\(next.name)까지 \(next.need - store.save.gardenCount)그루")
+                    Text(L10n.text("\(next.name)까지 \(next.need - store.save.gardenCount)그루"))
                         .font(.system(size: 10)).foregroundStyle(.tertiary)
                 } else {
-                    Text("정원 만렙").font(.system(size: 10, weight: .medium)).foregroundStyle(.pink)
+                    Text(L10n.text("정원 만렙")).font(.system(size: 10, weight: .medium)).foregroundStyle(.pink)
                 }
                 Spacer()
                 // **잠그지 않는다.** 3그루까지 막아뒀었는데, 3그루는 석 달이다.
@@ -68,12 +68,12 @@ struct CollectionView: View {
                 //
                 // 막아둔 이유는 "빈 정원을 보여주기 민망하다" 였을 텐데, 0그루에도
                 // 창에는 키우는 화분과 장식이 있다. 빈 화면이 아니다.
-                Button("크게 보기") { openGarden() }
+                Button(L10n.text("크게 보기")) { openGarden() }
                     .controlSize(.small)
                     .buttonStyle(.borderedProminent)
             }
             if !store.save.decorations.isEmpty {
-                Text("크게 보기에서 장식을 끌어서 옮길 수 있어요.")
+                Text(L10n.text("크게 보기에서 장식을 끌어서 옮길 수 있어요."))
                     .font(.system(size: 9)).foregroundStyle(.tertiary)
             }
         }
@@ -86,7 +86,7 @@ struct CollectionView: View {
     private var dexSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
-                Text("종 도감").font(.system(size: 12, weight: .semibold))
+                Text(L10n.text("종 도감")).font(.system(size: 12, weight: .semibold))
                 Spacer()
                 Text("\(collected.count) / \(PlantSpecies.catalog.count)")
                     .font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
@@ -101,7 +101,7 @@ struct CollectionView: View {
 
             // "행운은 명패에만" 이라고 적어뒀는데 바로 위 도감 칸이 반짝 팔레트로 그리고
             // ✨ 배지까지 붙인다. 화면이 하는 일을 화면이 부정하고 있었다.
-            Text("미획득 칸은 실루엣만 보여요. 행운은 ✨ 로 표시됩니다.")
+            Text(L10n.text("미획득 칸은 실루엣만 보여요. 행운은 ✨ 로 표시됩니다."))
                 .font(.system(size: 9)).foregroundStyle(.tertiary)
         }
     }
@@ -144,7 +144,7 @@ struct CollectionView: View {
                 .foregroundStyle(got ? Color.secondary : Color.secondary.opacity(0.55))
                 .lineLimit(1)
         }
-        .help(got ? "\(sp.name) · \(sp.rarity.label)" : "아직 못 만난 종")
+        .help(got ? "\(sp.name) · \(sp.rarity.label)" : L10n.text("아직 못 만난 종"))
     }
 
     /// 미획득 칸용 단색 팔레트.
@@ -158,16 +158,16 @@ struct CollectionView: View {
 
     private var recordSection: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text("기록").font(.system(size: 9, weight: .medium, design: .monospaced))
+            Text(L10n.text("기록")).font(.system(size: 9, weight: .medium, design: .monospaced))
                 .foregroundStyle(.tertiary)
-            row("완주한 그루", "\(store.save.gardenCount)")
+            row(L10n.text("완주한 그루"), "\(store.save.gardenCount)")
             if let fastest = store.save.garden.map(\.daysToGrow).min() {
-                row("가장 빨리 키운 그루", "\(fastest)일")
+                row(L10n.text("가장 빨리 키운 그루"), L10n.text("\(fastest)일"))
             }
-            row("부은 총 물", "\(store.save.waterSinceInstall.formatted()) mL")
-            row("누적 원시 토큰", TokenFormat.short(store.save.rawSinceInstall))
+            row(L10n.text("부은 총 물"), "\(store.save.waterSinceInstall.formatted()) mL")
+            row(L10n.text("누적 원시 토큰"), TokenFormat.short(store.save.rawSinceInstall))
             if store.save.streakDays > 0 {
-                row("연속 사용", "\(store.save.streakDays)일 (+\(PlantBalance.streakBonusPercent(days: store.save.streakDays))%)")
+                row(L10n.text("연속 사용"), L10n.text("\(store.save.streakDays)일 (+\(PlantBalance.streakBonusPercent(days: store.save.streakDays))%)"))
             }
         }
     }

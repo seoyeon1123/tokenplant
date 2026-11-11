@@ -86,7 +86,7 @@ enum LimitsReader {
                 snap.windows.append(contentsOf: codex)
             }
         } catch {
-            notes.append("Codex 한도를 못 읽었어요")
+            notes.append(L10n.text("Codex 한도를 못 읽었어요"))
         }
 
         snap.note = notes.isEmpty ? nil : notes.joined(separator: " · ")
@@ -94,21 +94,21 @@ enum LimitsReader {
     }
 
     private static func claudeNote(for error: Error) -> String {
-        guard let e = error as? LimitsError else { return "Claude 한도를 못 읽었어요" }
+        guard let e = error as? LimitsError else { return L10n.text("Claude 한도를 못 읽었어요") }
         switch e {
         case .credentialMissing, .credentialFormat:
-            return "Claude Code 로그인이 필요해요"
+            return L10n.text("Claude Code 로그인이 필요해요")
         case .keychainInteractionNotAllowed:
-            return "키체인 접근 권한이 필요해요"
+            return L10n.text("키체인 접근 권한이 필요해요")
         case .keychainUnavailable:
-            return "키체인을 못 읽었어요"
+            return L10n.text("키체인을 못 읽었어요")
         case .httpStatus(401), .httpStatus(403):
             // 토큰이 만료됐다. 숫자만 보여주면 사용자는 무엇을 해야 할지 모른다.
-            return "Claude Code 로그인이 만료됐어요 — Claude Code 를 한 번 실행하면 갱신돼요"
+            return L10n.text("Claude Code 로그인이 만료됐어요 — Claude Code 를 한 번 실행하면 갱신돼요")
         case .httpStatus(let code):
-            return "Claude 한도 조회 실패 (\(code))"
+            return L10n.text("Claude 한도 조회 실패 (\(code))")
         case .rateLimited:
-            return "Claude 한도 조회가 제한됐어요"
+            return L10n.text("Claude 한도 조회가 제한됐어요")
         }
     }
 
@@ -162,17 +162,17 @@ enum LimitsReader {
         var grantableWindows: [LimitWindowInfo] {
             var out: [LimitWindowInfo] = []
             if let u = fiveHour?.utilization {
-                out.append(.init(key: "claude.fiveHour", name: "Claude 5시간",
+                out.append(.init(key: "claude.fiveHour", name: L10n.text("Claude 5시간"),
                                  kind: .session, utilization: u))
             } else if let e = limits?.first(where: { $0.kind == "session" }), let u = e.percent {
-                out.append(.init(key: "claude.fiveHour", name: "Claude 5시간",
+                out.append(.init(key: "claude.fiveHour", name: L10n.text("Claude 5시간"),
                                  kind: .session, utilization: u))
             }
             if let u = sevenDay?.utilization {
-                out.append(.init(key: "claude.sevenDay", name: "Claude 주간",
+                out.append(.init(key: "claude.sevenDay", name: L10n.text("Claude 주간"),
                                  kind: .weekly, utilization: u))
             } else if let e = limits?.first(where: { $0.kind == "weekly_all" }), let u = e.percent {
-                out.append(.init(key: "claude.sevenDay", name: "Claude 주간",
+                out.append(.init(key: "claude.sevenDay", name: L10n.text("Claude 주간"),
                                  kind: .weekly, utilization: u))
             }
             return out
@@ -401,11 +401,11 @@ enum LimitsReader {
 
     static func windowLabel(_ minutes: Int?) -> String {
         switch minutes {
-        case 300: return "5시간"
-        case 10_080: return "주간"
-        case let m? where m >= 60 && m % 60 == 0: return "\(m / 60)시간"
-        case let m?: return "\(m)분"
-        case nil: return "한도"
+        case 300: return L10n.text("5시간")
+        case 10_080: return L10n.text("주간")
+        case let m? where m >= 60 && m % 60 == 0: return L10n.text("\(m / 60)시간")
+        case let m?: return L10n.text("\(m)분")
+        case nil: return L10n.text("한도")
         }
     }
 

@@ -119,7 +119,7 @@ struct PotView: View {
         .onTapGesture { tapPlant() }
         // 탭 제스처는 VoiceOver 로는 안 눌린다 — 버튼으로 알리고 같은 동작을 붙인다.
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(pot?.nickname ?? store.species(slot).name) 화분")
+        .accessibilityLabel(L10n.text("\(pot?.nickname ?? store.species(slot).name) 화분"))
         .accessibilityHint(tapHelp)
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { tapPlant() }
@@ -222,13 +222,13 @@ struct PotView: View {
                 } label: {
                     Image(systemName: "pencil").font(.system(size: 9))
                 }
-                .accessibilityLabel("이름 붙이기")
+                .accessibilityLabel(L10n.text("이름 붙이기"))
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
-                .help("이름 붙이기 — 정원으로 옮기면 명패에 남아요")
+                .help(L10n.text("이름 붙이기 — 정원으로 옮기면 명패에 남아요"))
                 .popover(isPresented: $renaming, arrowEdge: .bottom) { renameField }
                 if pot?.isShiny == true {
-                    Text("행운").font(.system(size: 9, weight: .medium))
+                    Text(L10n.text("행운")).font(.system(size: 9, weight: .medium))
                         .padding(.horizontal, 5).padding(.vertical, 1)
                         .background(Capsule().fill(Color.yellow.opacity(0.30)))
                 }
@@ -254,15 +254,15 @@ struct PotView: View {
 
     private var renameField: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("이름 붙이기").font(.system(size: 11, weight: .semibold))
+            Text(L10n.text("이름 붙이기")).font(.system(size: 11, weight: .semibold))
             TextField(store.species(slot).name, text: $nameDraft)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 180)
                 .onSubmit(commitName)
             HStack {
-                Text("비우면 종 이름으로 돌아가요").font(.system(size: 9)).foregroundStyle(.tertiary)
+                Text(L10n.text("비우면 종 이름으로 돌아가요")).font(.system(size: 9)).foregroundStyle(.tertiary)
                 Spacer()
-                Button("저장", action: commitName).controlSize(.small).keyboardShortcut(.defaultAction)
+                Button(L10n.text("저장"), action: commitName).controlSize(.small).keyboardShortcut(.defaultAction)
             }
         }
         .padding(10)
@@ -310,23 +310,23 @@ struct PotView: View {
             .contentShape(Rectangle())
             .onTapGesture { showStages.toggle() }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("성장 게이지")
-            .accessibilityValue("다음 단계까지 \(Int((store.stageProgress(slot) * 100).rounded()))%")
-            .accessibilityHint("10단계 전체 보기")
+            .accessibilityLabel(L10n.text("성장 게이지"))
+            .accessibilityValue(L10n.text("다음 단계까지 \(Int((store.stageProgress(slot) * 100).rounded()))%"))
+            .accessibilityHint(L10n.text("10단계 전체 보기"))
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { showStages.toggle() }
             // 눌리는 줄 아무 데도 안 적혀 있었다 — 10단계 표가 우연히만 열렸다.
-            .help("눌러서 10단계 전체 보기")
+            .help(L10n.text("눌러서 10단계 전체 보기"))
             .popover(isPresented: $showStages, arrowEdge: .bottom) { stageList }
 
             // 이식은 슬롯마다 따로다 — 물·아이템과 달리 이 버튼은 화분별로 있어야 한다.
             if pot?.isReadyToTransplant == true {
-                Button("정원으로 옮기기") { _ = store.transplant(slot: slot) }
+                Button(L10n.text("정원으로 옮기기")) { _ = store.transplant(slot: slot) }
                     .controlSize(.small)
                     .buttonStyle(.borderedProminent)
                     .tint(.green)
             } else if let days = store.daysToTransplant(slot), days > 0 {
-                Text("이식까지 약 \(days)일")
+                Text(L10n.text("이식까지 약 \(days)일"))
                     .font(.system(size: 10)).foregroundStyle(.tertiary)
             }
         }
@@ -341,11 +341,11 @@ struct PotView: View {
     //
     // 그래서 `/` 를 없앤다. 분수로 안 보이면 오해할 여지가 없다.
     // 누적은 이 앱의 보람이라 남기고, 오른쪽은 문턱 대신 **남은 양**을 말한다.
-    private var gaugeLeft: String { "총 \(Int(shownWater).formatted()) mL" }
+    private var gaugeLeft: String { L10n.text("총 \(Int(shownWater).formatted()) mL") }
 
     private var gaugeRight: String {
-        guard let left = store.waterToNext(slot) else { return "만렙" }
-        return "다음까지 \(left.formatted()) mL"
+        guard let left = store.waterToNext(slot) else { return L10n.text("만렙") }
+        return L10n.text("다음까지 \(left.formatted()) mL")
     }
 
     /// 이 화분의 목표. 아직 안 심었으면 지금 심으면 잡힐 목표를 미리 보여준다.
@@ -376,7 +376,7 @@ struct PotView: View {
             Divider().padding(.vertical, 2)
             HStack(spacing: 6) {
                 Text("→").font(.system(size: 9)).foregroundStyle(.tertiary)
-                Text("정원 이식").font(.system(size: 11))
+                Text(L10n.text("정원 이식")).font(.system(size: 11))
                 Spacer()
                 Text(shownCycle.formatted())
                     .font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
@@ -393,22 +393,22 @@ struct PotView: View {
     /// 연출은 여기서 직접 돌리지 않고 `store.itemEffectSeq` 신호를 따른다 —
     /// 직접 돌리면 화분이 두 개일 때 누른 쪽만 움직인다.
     private var tapHelp: String {
-        if store.save.count(.water) <= 0 { return "토큰을 쓰면 저절로 자라요" }
+        if store.save.count(.water) <= 0 { return L10n.text("토큰을 쓰면 저절로 자라요") }
         if let why = store.blockReason(.water) { return why }
-        return "물 주기 — 오늘 \(store.waterUsesLeftToday)번 더 (창고에 \(store.save.count(.water))개)"
+        return L10n.text("물 주기 — 오늘 \(store.waterUsesLeftToday)번 더 (창고에 \(store.save.count(.water))개)")
     }
 
     /// 눌러서 아무 일이 안 일어나면 고장으로 읽힌다. 막힌 이유를 **화면에** 남긴다 —
     /// 툴팁은 마우스를 올려야 보이고, 메뉴바 팝오버에서는 그러기도 전에 닫는다.
     private func tapPlant() {
         guard store.save.count(.water) > 0 else {
-            tapNote = "물이 없어요 — 상점에서 살 수 있어요"
+            tapNote = L10n.text("물이 없어요 — 상점에서 살 수 있어요")
             return
         }
         switch store.use(.water) {
         case .ok: tapNote = nil
         case .noEffect(let why): tapNote = why
-        case .notOwned: tapNote = "물이 없어요 — 상점에서 살 수 있어요"
+        case .notOwned: tapNote = L10n.text("물이 없어요 — 상점에서 살 수 있어요")
         }
     }
 
@@ -537,20 +537,22 @@ struct PotQuickSlots: View {
     private let items: [ShopItem] = [.water, .fertilizer, .nutrient]
 
     var body: some View {
-        HStack(spacing: 6) {
-            ForEach(items, id: \.self) { item in
-                slotButton(item)
-                .controlSize(.small)
-                .buttonStyle(.bordered)
-                // 물만 색을 준다. `.borderedProminent` 를 삼항으로 고르면 두 스타일이
-                // 서로 다른 타입이라 안 섞이므로, 스타일은 하나로 두고 tint 로만 강조한다.
-                .tint(item == .water && store.save.count(.water) > 0 ? .accentColor : .secondary)
-                .disabled(store.save.count(item) == 0 || blocked(item))
-                .help(help(item))
-            }
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                ForEach(items, id: \.self) { item in
+                    slotButton(item)
+                    .controlSize(.small)
+                    .buttonStyle(.bordered)
+                    // 물만 색을 준다. `.borderedProminent` 를 삼항으로 고르면 두 스타일이
+                    // 서로 다른 타입이라 안 섞이므로, 스타일은 하나로 두고 tint 로만 강조한다.
+                    .tint(item == .water && store.save.count(.water) > 0 ? .accentColor : .secondary)
+                    .disabled(store.save.count(item) == 0 || blocked(item))
+                    .help(help(item))
+                }
 
+                Spacer(minLength: 0)
+            }
             waterAllowance
-            Spacer()
         }
     }
 
@@ -565,7 +567,7 @@ struct PotQuickSlots: View {
         if item == .nutrient, store.slotCount == 2 {
             Menu {
                 ForEach(store.nutrientSlots, id: \.self) { slot in
-                    Button("\(slot + 1)번 · \(store.species(slot).name) +\((store.nutrientGain(slot) ?? 0).formatted()) mL") {
+                    Button(L10n.text("\(slot + 1)번 · \(store.species(slot).name) +\((store.nutrientGain(slot) ?? 0).formatted()) mL")) {
                         _ = store.use(.nutrient, slot: slot)
                     }
                 }
@@ -583,7 +585,7 @@ struct PotQuickSlots: View {
     private func label(_ item: ShopItem) -> String {
         if item == .fertilizer {
             let left = store.save.fertilizerDaysLeft(now: Date())
-            if left > 0 { return "\(left)일" }
+            if left > 0 { return L10n.text("\(left)일") }
         }
         return "\(item.name) \(store.save.count(item))"
     }
@@ -596,11 +598,11 @@ struct PotQuickSlots: View {
     /// 이번엔 거꾸로 "둘 다 가능"으로 읽혔다. 분수를 버리고 말로 쓴다.
     private var waterAllowance: some View {
         let left = store.waterUsesLeftToday
-        return Text(left > 0 ? "오늘 \(left)번 더" : "오늘은 끝")
+        return Text(left > 0 ? L10n.text("오늘 \(left)번 더") : L10n.text("오늘은 끝"))
             .font(.system(size: 9, design: .monospaced))
             .foregroundStyle(left > 0 ? Color.secondary : Color.orange)
-            .help(left > 0 ? "오늘 \(left)번 더 줄 수 있어요"
-                           : "오늘은 다 줬어요 — 안 쓴 토큰은 지갑에 그대로 남습니다")
+            .help(left > 0 ? L10n.text("오늘 \(left)번 더 줄 수 있어요")
+                           : L10n.text("오늘은 다 줬어요 — 안 쓴 토큰은 지갑에 그대로 남습니다"))
     }
 
     /// 지금 못 쓰는 품목. 판정은 창고와 **같은 곳**(`PlantStore.blockReason`)에서 온다 —
@@ -608,21 +610,21 @@ struct PotQuickSlots: View {
     private func blocked(_ item: ShopItem) -> Bool { store.blockReason(item) != nil }
 
     private func help(_ item: ShopItem) -> String {
-        guard store.save.count(item) > 0 else { return "\(item.name) — 상점에서 살 수 있어요" }
+        guard store.save.count(item) > 0 else { return L10n.text("\(item.name) — 상점에서 살 수 있어요") }
         switch item {
         case .water:
             if let why = store.blockReason(item) { return why }
-            return "+\(store.waterML.formatted()) mL · 오늘 \(store.waterUsesLeftToday)번 남음"
+            return L10n.text("+\(store.waterML.formatted()) mL · 오늘 \(store.waterUsesLeftToday)번 남음")
         case .fertilizer:
             if let why = store.blockReason(item) { return why }
-            return "\(PlantBalance.fertilizerDays)일간 들어오는 물 +\(PlantBalance.fertilizerBonusPercent)%"
+            return L10n.text("\(PlantBalance.fertilizerDays)일간 들어오는 물 +\(PlantBalance.fertilizerBonusPercent)%")
         case .nutrient:
             let slots = store.nutrientSlots
             guard !slots.isEmpty else {
-                return "줄 수 있는 그루가 없어요 — 그루마다 한 번이고, 다 자란 그루엔 안 들어가요"
+                return L10n.text("줄 수 있는 그루가 없어요 — 그루마다 한 번이고, 다 자란 그루엔 안 들어가요")
             }
-            if store.slotCount == 2 { return "어느 화분에 줄지 골라요 · 한 그루에 한 번뿐이에요" }
-            return "지금 쓰면 +\((store.nutrientGain(0) ?? 0).formatted()) mL · 한 그루에 한 번뿐이에요"
+            if store.slotCount == 2 { return L10n.text("어느 화분에 줄지 골라요 · 한 그루에 한 번뿐이에요") }
+            return L10n.text("지금 쓰면 +\((store.nutrientGain(0) ?? 0).formatted()) mL · 한 그루에 한 번뿐이에요")
         default: return item.name
         }
     }

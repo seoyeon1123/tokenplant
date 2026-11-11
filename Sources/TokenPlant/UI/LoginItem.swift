@@ -36,7 +36,7 @@ enum LoginItem {
     @discardableResult
     static func setEnabled(_ on: Bool) -> String? {
         guard isAvailable else {
-            return "앱으로 설치해야 켤 수 있어요 (./build-app.sh --install)"
+            return L10n.text("앱으로 설치해야 켤 수 있어요 (./build-app.sh --install)")
         }
         do {
             if on {

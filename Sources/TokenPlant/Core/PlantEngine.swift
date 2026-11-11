@@ -767,11 +767,11 @@ enum PlantEngine {
             // 한 그루에 한 번. 그루에 기록하므로 이식하면 저절로 풀린다 —
             // 날짜로 세면 "하루 지나면 또" 가 되어 한 그루에 열 개도 들어간다.
             guard pot.nutrientUses < PlantBalance.nutrientUsesPerPlant else {
-                return .noEffect(reason: "이 그루엔 이미 줬어요 — 다음 그루에 쓸 수 있어요")
+                return .noEffect(reason: L10n.text("이 그루엔 이미 줬어요 — 다음 그루에 쓸 수 있어요"))
             }
             // 비례. 남은 거리를 당긴다 — 초반엔 크고 후반엔 작아진다.
             let gain = Nutrient.water(currentWater: pot.water, cycle: pot.cycleWater)
-            guard gain > 0 else { return .noEffect(reason: "이미 다 자랐어요") }
+            guard gain > 0 else { return .noEffect(reason: L10n.text("이미 다 자랐어요")) }
             consume(item, &save)
             save[keyPath: key]?.nutrientUses += 1
 
@@ -796,7 +796,7 @@ enum PlantEngine {
             if let pending = save.pendingSeedGuarantee,
                let next = item.seedGuarantee,
                pending.sortRank >= next.sortRank {
-                return .noEffect(reason: "이미 \(pending.label) 확정이 예약돼 있어요 — 이식하면 다시 쓸 수 있어요")
+                return .noEffect(reason: L10n.text("이미 \(pending.label) 확정이 예약돼 있어요 — 이식하면 다시 쓸 수 있어요"))
             }
             consume(item, &save)
             save.pendingSeedGuarantee = item.seedGuarantee
@@ -808,7 +808,7 @@ enum PlantEngine {
             let owned = Set(save.decorations)
             let pool = DecorIcons.gachaKeys.filter { !owned.contains($0) }
             guard !pool.isEmpty else {
-                return .noEffect(reason: "장식을 다 모았어요 — 정원에 전부 놓여 있어요")
+                return .noEffect(reason: L10n.text("장식을 다 모았어요 — 정원에 전부 놓여 있어요"))
             }
             consume(item, &save)
             let picked = pool[Int(roll % UInt64(pool.count))]
@@ -817,7 +817,7 @@ enum PlantEngine {
             return .ok(waterGained: 0)
 
         case .shinyCharm, .potSlot, .bench, .feeder, .lantern:
-            return .noEffect(reason: "보유형이라 항상 적용돼요")
+            return .noEffect(reason: L10n.text("보유형이라 항상 적용돼요"))
         }
     }
 
@@ -834,10 +834,10 @@ enum PlantEngine {
     /// 모든 화분이 이식 대기면 물은 목표를 넘친 채 이식할 때 버려진다 — 예전엔 물 1개와
     /// 오늘 횟수 1회가 그대로 빠지고 아무 일도 없었다.
     static func waterBlockReason(_ save: PlantSave, today: String) -> String? {
-        if waterUsesLeft(save, today: today) <= 0 { return "오늘 물은 다 줬어요 — 내일 또 줄 수 있어요" }
+        if waterUsesLeft(save, today: today) <= 0 { return L10n.text("오늘 물은 다 줬어요 — 내일 또 줄 수 있어요") }
         let pots = [save.pot, save.pot2].compactMap { $0 }
         if !pots.isEmpty, pots.allSatisfy(\.isReadyToTransplant) {
-            return "다 자랐어요 — 이식하면 새 그루에 줄 수 있어요"
+            return L10n.text("다 자랐어요 — 이식하면 새 그루에 줄 수 있어요")
         }
         return nil
     }
@@ -852,7 +852,7 @@ enum PlantEngine {
         let base = max(now, save.fertilizerExpiresAt ?? now)
         guard let limit = Calendar.current.date(byAdding: .day, value: room, to: now),
               base > limit else { return nil }
-        return "거름이 \(save.fertilizerDaysLeft(now: now))일 남아 있어요 — \(room)일 이하로 줄면 더 붙일 수 있어요"
+        return L10n.text("거름이 \(save.fertilizerDaysLeft(now: now))일 남아 있어요 — \(room)일 이하로 줄면 더 붙일 수 있어요")
     }
 
     private static func consume(_ item: ShopItem, _ save: inout PlantSave) {

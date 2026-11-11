@@ -431,7 +431,7 @@ final class PlantStore {
     }
 
     func stageName(_ slot: Int) -> String {
-        guard let p = pot(slot) else { return "씨앗" }
+        guard let p = pot(slot) else { return L10n.text("씨앗") }
         return PotSprites.stages[min(p.stageIndex, PotSprites.stages.count - 1)].name
     }
 
@@ -530,8 +530,8 @@ final class PlantStore {
     var gardenCountText: String {
         let n = save.gardenCount
         let drawn = SceneLayout.byKey(save.gardenTier.key).slotCount
-        guard n > drawn else { return "\(n) / \(GardenTier.maxCount) 그루" }
-        return "\(n)그루 · 여기엔 최근 \(drawn) 표시"
+        guard n > drawn else { return L10n.text("\(n) / \(GardenTier.maxCount) 그루") }
+        return L10n.text("\(n)그루 · 여기엔 최근 \(drawn) 표시")
     }
 
     /// 설치 후 번 것 · 쓴 것 — 지갑이 왜 이 숫자인지 화면에서 풀어주는 데 쓴다.
@@ -562,7 +562,7 @@ final class PlantStore {
         switch item {
         case .water: return PlantEngine.waterBlockReason(save, today: DayKey.make(clock()))
         case .fertilizer: return PlantEngine.fertilizerBlockReason(save, now: clock())
-        case .nutrient: return nutrientSlots.isEmpty ? "줄 수 있는 그루가 없어요 (그루마다 한 번)" : nil
+        case .nutrient: return nutrientSlots.isEmpty ? L10n.text("줄 수 있는 그루가 없어요 (그루마다 한 번)") : nil
         default: return nil
         }
     }
@@ -641,10 +641,10 @@ final class PlantStore {
         let d = days(forRaw: raw)
         if d < 1 {
             let hours = Int((d * 24).rounded())
-            return hours <= 0 ? "곧" : "\(hours)시간치"
+            return hours <= 0 ? L10n.text("곧") : L10n.text("\(hours)시간치")
         }
-        if d < 10 { return String(format: "%.1f일치", d) }
-        return "\(Int(d.rounded()))일치"
+        if d < 10 { return String(format: L10n.text("%.1f일치"), d) }
+        return L10n.text("\(Int(d.rounded()))일치")
     }
 
     /// 이식까지 남은 물과 예상 일수 — **아무것도 안 사고 그냥 뒀을 때**.
@@ -672,12 +672,12 @@ final class PlantStore {
 
     var statusLine: String {
         switch displayState {
-        case .seed:     return "막 심었어요. 토큰을 쓰면 저절로 자랍니다."
-        case .idle:     return "잘 자라고 있어요."
-        case .hasItems: return "창고에 쓸 게 있어요. 주면 더 빨리 자랍니다."
-        case .thirsty:  return "목말라요. 토큰을 쓴 지 며칠 됐어요."
-        case .parched:  return "바싹 말랐어요. 한 번 자라면 색이 돌아옵니다."
-        case .levelUp:  return "자랐어요!"
+        case .seed:     return L10n.text("막 심었어요. 토큰을 쓰면 저절로 자랍니다.")
+        case .idle:     return L10n.text("잘 자라고 있어요.")
+        case .hasItems: return L10n.text("창고에 쓸 게 있어요. 주면 더 빨리 자랍니다.")
+        case .thirsty:  return L10n.text("목말라요. 토큰을 쓴 지 며칠 됐어요.")
+        case .parched:  return L10n.text("바싹 말랐어요. 한 번 자라면 색이 돌아옵니다.")
+        case .levelUp:  return L10n.text("자랐어요!")
         }
     }
 

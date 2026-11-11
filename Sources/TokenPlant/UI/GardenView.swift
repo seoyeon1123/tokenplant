@@ -372,10 +372,10 @@ struct GardenView: View {
                 .font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary)
             Spacer()
             if let next = GardenTier.next(afterCount: store.save.gardenCount) {
-                Text("\(next.name)까지 \(next.need - store.save.gardenCount)그루 · \(next.unlock) 해금")
+                Text(L10n.text("\(next.name)까지 \(next.need - store.save.gardenCount)그루 · \(next.unlock) 해금"))
                     .font(.system(size: 11)).foregroundStyle(.tertiary)
             } else {
-                Text("정원 만렙").font(.system(size: 11, weight: .medium)).foregroundStyle(.pink)
+                Text(L10n.text("정원 만렙")).font(.system(size: 11, weight: .medium)).foregroundStyle(.pink)
             }
         }
     }
@@ -433,7 +433,7 @@ struct GardenView: View {
                                     dragBy = .zero
                                 }
                         )
-                        .help("\(DecorIcons.name(d.key)) — 끌어서 옮기세요")
+                        .help(L10n.text("\(DecorIcons.name(d.key)) — 끌어서 옮기세요"))
                 }
             }
             .frame(width: CGFloat(layout.width) * scale,
@@ -470,14 +470,14 @@ struct GardenView: View {
     private var controls: some View {
         HStack(spacing: 8) {
             if store.save.gardenCount >= 10 {
-                Text("계절").font(.system(size: 10, design: .monospaced)).foregroundStyle(.tertiary)
+                Text(L10n.text("계절")).font(.system(size: 10, design: .monospaced)).foregroundStyle(.tertiary)
                 ForEach(SeasonPalette.all, id: \.key) { p in
                     Button(p.name) { seasonOverride = p.key }
                         .controlSize(.small)
                         .buttonStyle(.bordered)
                         .tint(season.key == p.key ? .accentColor : .secondary)
                 }
-                Button("자동") { seasonOverride = nil }
+                Button(L10n.text("자동")) { seasonOverride = nil }
                     .controlSize(.small).disabled(seasonOverride == nil)
             }
 
@@ -489,14 +489,14 @@ struct GardenView: View {
 
             if !store.save.decorPositions.isEmpty {
                 // 끌다가 겹쳐놓고 못 찾을 때 빠져나갈 길. 이게 없으면 되돌릴 방법이 없다.
-                Button("장식 자리 초기화") { store.resetDecorPositions() }
+                Button(L10n.text("장식 자리 초기화")) { store.resetDecorPositions() }
                     .controlSize(.small)
             }
 
-            Button("PNG 내보내기") { exportPNG() }
+            Button(L10n.text("PNG 내보내기")) { exportPNG() }
                 .controlSize(.small)
                 .disabled(store.save.gardenCount < 18)
-                .help(store.save.gardenCount < 18 ? "수목원(18그루)부터 해금" : "정원을 8배로 저장합니다")
+                .help(store.save.gardenCount < 18 ? L10n.text("수목원(18그루)부터 해금") : L10n.text("정원을 8배로 저장합니다"))
         }
     }
 
@@ -504,19 +504,19 @@ struct GardenView: View {
         let image = GardenComposer.image(exportGrid, scale: 8)
         let panel = NSSavePanel()
         panel.allowedContentTypes = [UTType.png]
-        panel.nameFieldStringValue = "garden-\(store.save.gardenCount)그루.png"
+        panel.nameFieldStringValue = L10n.text("garden-\(store.save.gardenCount)그루.png")
         guard panel.runModal() == .OK, let url = panel.url,
               let tiff = image.tiffRepresentation,
               let rep = NSBitmapImageRep(data: tiff),
               let data = rep.representation(using: .png, properties: [:]) else {
-            exportNote = "저장하지 못했어요"
+            exportNote = L10n.text("저장하지 못했어요")
             return
         }
         do {
             try data.write(to: url)
-            exportNote = "저장했어요"
+            exportNote = L10n.text("저장했어요")
         } catch {
-            exportNote = "저장하지 못했어요"
+            exportNote = L10n.text("저장하지 못했어요")
         }
     }
 
@@ -525,7 +525,7 @@ struct GardenView: View {
             HStack(spacing: 6) {
                 Text(e.nickname ?? e.species.name).font(.system(size: 14, weight: .semibold))
                 if e.isShiny {
-                    Text("행운").font(.system(size: 9, weight: .medium))
+                    Text(L10n.text("행운")).font(.system(size: 9, weight: .medium))
                         .padding(.horizontal, 5).padding(.vertical, 1)
                         .background(Capsule().fill(Color.yellow.opacity(0.3)))
                 }
@@ -533,16 +533,16 @@ struct GardenView: View {
                     .padding(.horizontal, 5).padding(.vertical, 1)
                     .background(Capsule().fill(Color.green.opacity(0.2)))
                 Spacer()
-                Button("닫기") { selected = nil }.controlSize(.small)
+                Button(L10n.text("닫기")) { selected = nil }.controlSize(.small)
             }
             Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 3) {
                 GridRow {
-                    label("심은 날"); value(dateText(e.plantedAt))
-                    label("완성"); value(dateText(e.transplantedAt))
+                    label(L10n.text("심은 날")); value(dateText(e.plantedAt))
+                    label(L10n.text("완성")); value(dateText(e.transplantedAt))
                 }
                 GridRow {
-                    label("걸린 일수"); value("\(e.daysToGrow)일")
-                    label("부은 물"); value("\(e.totalWater.formatted()) mL")
+                    label(L10n.text("걸린 일수")); value(L10n.text("\(e.daysToGrow)일"))
+                    label(L10n.text("부은 물")); value("\(e.totalWater.formatted()) mL")
                 }
             }
         }
@@ -552,8 +552,8 @@ struct GardenView: View {
 
     private var hint: some View {
         Text(store.save.garden.isEmpty
-             ? "아직 이식한 그루가 없어요. 거목까지 키우면 여기로 옮겨집니다."
-             : "그루를 클릭하면 명패가 열립니다.")
+             ? L10n.text("아직 이식한 그루가 없어요. 거목까지 키우면 여기로 옮겨집니다.")
+             : L10n.text("그루를 클릭하면 명패가 열립니다."))
             .font(.system(size: 11)).foregroundStyle(.tertiary)
     }
 

@@ -333,10 +333,10 @@ final class ReviewRegressionTests: XCTestCase {
     /// 등급 이름이 네 벌 있었다(`ShopView`·`PotView`·`GardenView`·`CollectionView`).
     /// 한 벌만 고치면 나머지 세 곳이 옛말이 되는 구조라 `PlantRarity` 로 모았다.
     func testRarityLabelsLiveInOnePlace() {
-        XCTAssertEqual(PlantRarity.common.label, "흔함")
-        XCTAssertEqual(PlantRarity.uncommon.label, "보통")
-        XCTAssertEqual(PlantRarity.rare.label, "희귀")
-        XCTAssertEqual(PlantRarity.legendary.label, "전설")
+        XCTAssertEqual(PlantRarity.common.label, L10n.text("흔함"))
+        XCTAssertEqual(PlantRarity.uncommon.label, L10n.text("보통"))
+        XCTAssertEqual(PlantRarity.rare.label, L10n.text("희귀"))
+        XCTAssertEqual(PlantRarity.legendary.label, L10n.text("전설"))
         for r in PlantRarity.allCases {
             XCTAssertFalse(r.label.isEmpty)
             XCTAssertNotEqual(r.label, r.rawValue, "\(r) 이름이 영어 그대로다")

@@ -43,17 +43,17 @@ enum ShopItem: String, Codable, Sendable, CaseIterable {
 
     var name: String {
         switch self {
-        case .decorBox: return "장식 뽑기"
-        case .water: return "물"
-        case .fertilizer: return "거름"
-        case .nutrient: return "영양제"
-        case .premiumSeed: return "고급 씨앗"
-        case .legendarySeed: return "전설 씨앗"
-        case .shinyCharm: return "행운 부적"
-        case .potSlot: return "화분 슬롯"
-        case .bench: return "벤치"
-        case .feeder: return "새 모이통"
-        case .lantern: return "석등"
+        case .decorBox: return L10n.text("장식 뽑기")
+        case .water: return L10n.text("물")
+        case .fertilizer: return L10n.text("거름")
+        case .nutrient: return L10n.text("영양제")
+        case .premiumSeed: return L10n.text("고급 씨앗")
+        case .legendarySeed: return L10n.text("전설 씨앗")
+        case .shinyCharm: return L10n.text("행운 부적")
+        case .potSlot: return L10n.text("화분 슬롯")
+        case .bench: return L10n.text("벤치")
+        case .feeder: return L10n.text("새 모이통")
+        case .lantern: return L10n.text("석등")
         }
     }
 

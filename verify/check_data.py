@@ -53,7 +53,9 @@ def bad(where, msg):
 
 
 def read(rel):
-    return (SRC / rel).read_text(encoding="utf-8")
+    source = (SRC / rel).read_text(encoding="utf-8")
+    # Inspect the original Korean data even when a display literal is localized.
+    return re.sub(r'L10n\.text\(("(?:\\.|[^"\\])*")\)', r'\1', source)
 
 
 # ── 1. 정원 씬 레이아웃 ────────────────────────────────────────
