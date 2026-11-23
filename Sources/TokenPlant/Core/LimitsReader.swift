@@ -228,7 +228,7 @@ enum LimitsReader {
             if !allowPrompt { applyNoUI(to: &query) }
 
             let (status, item) = copyMatching(query, allowPrompt: allowPrompt)
-            if status == errSecInteractionNotAllowed { throw LimitsError.keychainInteractionNotAllowed }
+            if isPermissionDenied(status) { throw LimitsError.keychainInteractionNotAllowed }
             lastStatus = status
             guard status == errSecSuccess, let data = item as? Data else { continue }
             sawItem = true
@@ -236,10 +236,24 @@ enum LimitsReader {
         }
 
         if !sawItem, lastStatus != errSecSuccess {
-            throw lastStatus == errSecItemNotFound ? LimitsError.credentialMissing
-                                                  : LimitsError.keychainUnavailable(lastStatus)
+            if lastStatus == errSecItemNotFound { throw LimitsError.credentialMissing }
+            if isPermissionDenied(lastStatus) { throw LimitsError.keychainInteractionNotAllowed }
+            throw LimitsError.keychainUnavailable(lastStatus)
         }
         throw LimitsError.credentialFormat
+    }
+
+    /// 권한이 없어서 못 읽은 것인지. **두 얼굴이 있다.**
+    ///
+    /// `-25308 errSecInteractionNotAllowed` 만 보고 있었는데, 실측하면 파일 기반 로그인
+    /// 키체인은 `-25293 errSecAuthFailed` 를 돌려준다(전역 억제를 켠 조용한 읽기, 그리고
+    /// 사용자가 창에서 "거부" 를 누른 경우 둘 다). 둘 다 "권한이 없다" 는 같은 말이다.
+    ///
+    /// 안 묶어두면 `keychainUnavailable` 로 떨어져 "키체인을 못 읽었어요" 만 보인다 —
+    /// 사용자는 그 문구에서 「키체인 권한 다시 요청」 버튼으로 갈 생각을 못 한다.
+    /// 권한을 줄 길을 안내 못 하는 게 이 기능에선 가장 큰 손해다.
+    static func isPermissionDenied(_ status: OSStatus) -> Bool {
+        status == errSecInteractionNotAllowed || status == errSecAuthFailed
     }
 
     /// `claudeAiOauth.accessToken` 만 꺼낸다.

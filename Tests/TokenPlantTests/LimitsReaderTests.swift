@@ -285,6 +285,21 @@ final class LimitsReaderTests: XCTestCase {
         XCTAssertEqual(policy, "u_AuthUIF", "정책 문자열이 바뀌었다 — 프롬프트가 뜰 수 있다")
     }
 
+    /// 권한 거부는 **두 코드로 온다.** -25308 만 보면 절반을 놓친다.
+    ///
+    /// 0.2.6 이 떠 있는 맥에서 직접 재보니, 전역 억제를 켠 조용한 읽기가
+    /// `-25293 errSecAuthFailed` 를 돌려줬다. 그 코드는 `keychainUnavailable` 로
+    /// 떨어져 "키체인을 못 읽었어요" 만 보였고, 사용자는 거기서
+    /// 「키체인 권한 다시 요청」 버튼으로 갈 길을 못 찾는다.
+    func testBothPermissionDeniedCodesAreTreatedAlike() {
+        XCTAssertTrue(LimitsReader.isPermissionDenied(errSecInteractionNotAllowed))
+        XCTAssertTrue(LimitsReader.isPermissionDenied(errSecAuthFailed),
+                      "-25293 을 놓치면 권한을 줄 길을 안내 못 한다")
+        XCTAssertFalse(LimitsReader.isPermissionDenied(errSecItemNotFound),
+                       "항목 없음은 권한 문제가 아니다 — 로그인하라고 해야 한다")
+        XCTAssertFalse(LimitsReader.isPermissionDenied(errSecSuccess))
+    }
+
     /// codex 바이너리를 못 찾으면 nil — 예외가 아니다. Codex 를 안 쓰는 사람의 정상 상태다.
     func testCodexBinaryLookupIsOptionalNotFatal() {
         // 실제 존재 여부는 환경에 따라 다르므로 크래시하지 않는 것만 본다.
